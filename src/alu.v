@@ -101,7 +101,7 @@ module alu (
             4'b1010: result = ~a;       // NOT  (B ignored)
 
             // ---- Data movement ----
-            4'b1011: result = a;        // PASS / MOV (forward A unchanged)
+            4'b1011: result = a;        // PASS / MOV (forward A unchanged) !!!!this is probably, result = b; because the immediate value comes through the B input after the immediate-extension block
 
             // ---- Load upper immediate ----
             // Places 4-bit field from B into the upper nibble; clears lower
