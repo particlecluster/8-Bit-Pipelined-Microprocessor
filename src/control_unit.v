@@ -5,8 +5,8 @@ module control_unit(
     output reg       reg_write,
     output reg       mem_read,
     output reg       mem_write,
-    output reg       alu_src,
-    output reg       wb_sel,
+    output reg       alu_src, // alue input b, 1 for imm value and 0 for reg value
+    output reg       wb_sel, //for alu result (0) or mem data (1)
     output reg       branch,
     output reg       jump,
 
