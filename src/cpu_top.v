@@ -126,6 +126,7 @@ module cpu_top(
     reg_file RF(
 
         .clk(clk),
+        .rst(rst), //jp
 
         .rs1(rs1),
         .rs2(rs2),
