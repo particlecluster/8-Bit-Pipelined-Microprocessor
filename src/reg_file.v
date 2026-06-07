@@ -1,6 +1,7 @@
 module reg_file(
 
     input clk,
+    input rst,
 
     input [2:0] rs1,
     input [2:0] rs2,
