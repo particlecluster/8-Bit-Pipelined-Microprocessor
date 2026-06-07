@@ -197,6 +197,7 @@ module cpu_top(
     data_mem DMEM(
 
         .clk(clk),
+        .rst(rst),
 
         .mem_read(mem_read),
         .mem_write(mem_write),
