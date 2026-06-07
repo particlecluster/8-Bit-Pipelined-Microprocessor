@@ -61,7 +61,18 @@ module cpu_top(
     // PC Logic
     //========================================================
 
-    assign next_pc = pc + 8'd1;
+    //assign next_pc = pc + 8'd1; didnt accout for brnach and jump
+    //
+    wire [7:0] branch_pc  = pc + imm5_ext;       // relative branch target
+    wire       take_branch = branch & ((opcode == 4'b1101) ?  zero   // BEQ
+                                     : (opcode == 4'b1110) ? ~zero   // BNE
+                                     : 1'b0);
+    wire [7:0] jump_pc    = {rd1[7:0]};           // JMP: absolute via register
+    
+    assign next_pc = jump   ? jump_pc   :
+                     take_branch ? branch_pc :
+                     pc + 8'd1;
+    //
 
     prog_counter PC(
 
