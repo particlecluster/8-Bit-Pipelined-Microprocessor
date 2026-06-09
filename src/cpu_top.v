@@ -150,7 +150,7 @@ module cpu_top(
 
     imm_ext IMM_EXT(
 
-        .imm(instr[4:0]),
+        .imm(instr[4:0]), // issue  ###########
 
         .imm_ext(imm5_ext)
 
