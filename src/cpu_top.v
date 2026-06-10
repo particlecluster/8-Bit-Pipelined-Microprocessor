@@ -16,6 +16,7 @@ module cpu_top(
     wire [2:0] rd;
     wire [2:0] rs1;
     wire [2:0] rs2;
+    wire [2:0] store_rs2;
 
     wire reg_write;
     wire mem_read;
@@ -29,6 +30,7 @@ module cpu_top(
 
     wire [7:0] rd1;
     wire [7:0] rd2;
+    wire [7:0] store_data;
 
     wire [7:0] imm5_ext;
     wire [7:0] imm8;
@@ -39,6 +41,7 @@ module cpu_top(
 
     wire [7:0] mem_data;
     wire [7:0] write_back_data;
+    
 
     wire zero;
     wire carry;
@@ -56,6 +59,7 @@ module cpu_top(
     assign rd  = instr[10:8];
     assign rs1 = instr[7:5];
     assign rs2 = instr[4:2];
+    assign store_rs2 = instr[10:8];
 
     //========================================================
     // PC Logic
@@ -130,6 +134,7 @@ module cpu_top(
 
         .rs1(rs1),
         .rs2(rs2),
+        .rs3(store_rs2),
 
         .rd(rd),
 
@@ -138,7 +143,8 @@ module cpu_top(
         .reg_write(reg_write),
 
         .rd1(rd1),
-        .rd2(rd2)
+        .rd2(rd2),
+        .rd3(store_data)
 
     );
 
@@ -204,7 +210,7 @@ module cpu_top(
 
         .addr(alu_result),
 
-        .write_data(rd2),
+        .write_data(store_data),
 
         .read_data(mem_data)
 
