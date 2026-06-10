@@ -20,18 +20,20 @@ module reg_file(
 
 reg [7:0] regs [0:7];
 
+integer i;
+
+initial begin
+    for(i = 0; i < 8; i = i + 1)
+        regs[i] = 8'd0;
+end
+
 assign rd1 = (rs1 == 3'd0) ? 8'd0 : regs[rs1];
 assign rd2 = (rs2 == 3'd0) ? 8'd0 : regs[rs2];
 assign rd3 = (rs3 == 3'd0) ? 8'd0 : regs[rs3];
 
-integer i;
 
-always @(posedge clk or posedge rst) begin
-    if(rst) begin
-        for(i = 0; i < 8; i = i + 1)
-            regs[i] <= 8'd0;
-    end
-    else if(reg_write && rd != 3'd0)
+always @(posedge clk) begin
+    if(reg_write && rd != 3'd0)
         regs[rd] <= wd;
 end
 
