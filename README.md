@@ -1,4 +1,5 @@
 # 8-Bit Pipelined Microprocessor in Verilog
+# ignore for MID evaluation
 
 > **IIT Indore — Science & Technology Council / Students' Gymkhana**  
 > Hardware Design Challenge
