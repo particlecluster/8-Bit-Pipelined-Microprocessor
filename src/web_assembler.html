@@ -1,1 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>16-bit RISC Hex Assembler</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        textarea { font-family: 'Courier New', Courier, monospace; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans">
 
+    <header class="bg-gray-800 p-4 shadow-md border-b border-gray-700 flex justify-between items-center">
+        <h1 class="text-xl font-bold text-blue-400">16-bit Hex Assembler</h1>
+        <button id="assembleBtn" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-md font-semibold transition-colors">
+            Assemble Code
+        </button>
+    </header>
+
+    <main class="flex-1 flex flex-col md:flex-row gap-4 p-4">
+        <!-- Input Section -->
+        <div class="flex-1 flex flex-col bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden">
+            <div class="bg-gray-700 p-2 text-sm font-semibold border-b border-gray-600">Assembly Input</div>
+            <textarea id="asmInput" class="flex-1 w-full bg-gray-900 text-green-400 p-4 outline-none resize-none" spellcheck="false" placeholder="// Write your assembly here...
+// Example:
+LDI r1, 10
+LDI r2, 20
+ADD r3, r1, r2
+STORE r3, r1, 5
+HLT"></textarea>
+        </div>
+
+        <!-- Output Section -->
+        <div class="flex-1 flex flex-col bg-gray-800 rounded-lg shadow-lg border border-gray-700 overflow-hidden">
+            <div class="bg-gray-700 p-2 text-sm font-semibold border-b border-gray-600 flex justify-between">
+                <span>program.hex Output</span>
+                <div>
+                    <button id="copyBtn" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded mr-2">Copy</button>
+                    <button id="downloadBtn" class="text-xs bg-green-600 hover:bg-green-500 px-2 py-1 rounded">Download .hex</button>
+                </div>
+            </div>
+            <textarea id="hexOutput" class="flex-1 w-full bg-gray-900 text-yellow-300 p-4 outline-none resize-none" readonly></textarea>
+        </div>
+    </main>
+
+    <script>
+        const opcodes = {
+            'ADD':  0b00000, 'SUB':  0b00001, 'AND':  0b00010, 'ORR':  0b00011,
+            'XOR':  0b00100, 'SHL':  0b00101, 'SHR':  0b00110, 'LDI':  0b00111,
+            'LOAD': 0b01000, 'STORE':0b01001, 'JMP':  0b01010, 'BEQ':  0b01011,
+            'BNE':  0b01100, 'BGT':  0b01101, 'ADDI': 0b01110, 'SLT':  0b01111,
+            'MUL':  0b10000, 'MAC':  0b10001, 'ROL':  0b10010, 'ROR':  0b10011,
+            'NOP':  0b11110, 'HLT':  0b11111
+        };
+
+        function parseReg(regStr) {
+            if (!regStr) return 0;
+            const match = regStr.match(/r([0-7])/i);
+            return match ? parseInt(match[1]) : 0;
+        }
+
+        function parseImm(immStr) {
+            if (!immStr) return 0;
+            let val = immStr.startsWith('0x') ? parseInt(immStr, 16) : parseInt(immStr, 10);
+            return val < 0 ? (val & 0xFF) : val; // basic two's complement handling
+        }
+
+        document.getElementById('assembleBtn').addEventListener('click', () => {
+            const lines = document.getElementById('asmInput').value.split('\n');
+            let hexArray = [];
+            let pc = 0;
+            let labels = {};
+
+            // Pass 1: Find Labels
+            lines.forEach(line => {
+                let clean = line.split('//')[0].trim();
+                if (clean.endsWith(':')) {
+                    labels[clean.slice(0, -1)] = pc;
+                } else if (clean !== '') {
+                    pc++;
+                }
+            });
+
+            pc = 0;
+            let errors = [];
+
+            // Pass 2: Assemble
+            lines.forEach((line, lineNum) => {
+                let cleanLine = line.split('//')[0].trim();
+                if (!cleanLine || cleanLine.endsWith(':')) return;
+
+                const parts = cleanLine.replace(/,/g, ' ').split(/\s+/);
+                const inst = parts[0].toUpperCase();
+                
+                if (!(inst in opcodes)) {
+                    errors.push(`Line ${lineNum + 1}: Unknown instruction '${inst}'`);
+                    return;
+                }
+
+                const op = opcodes[inst];
+                let machineCode = 0;
+
+                try {
+                    // R-Type
+                    if (['ADD', 'SUB', 'AND', 'ORR', 'XOR', 'SHL', 'SHR', 'SLT', 'MUL', 'MAC', 'ROL', 'ROR'].includes(inst)) {
+                        machineCode = (op << 11) | (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | (parseReg(parts[3]) << 2);
+                    }
+                    // ADDI
+                    else if (inst === 'ADDI') {
+                        machineCode = (op << 11) | (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | (parseImm(parts[3]) & 0x1F);
+                    }
+                    // LDI
+                    else if (inst === 'LDI') {
+                        machineCode = (op << 11) | (parseReg(parts[1]) << 8) | (parseImm(parts[2]) & 0xFF);
+                    }
+                    // MEM
+                    else if (['LOAD', 'STORE'].includes(inst)) {
+                        machineCode = (op << 11) | (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | (parseImm(parts[3]) & 0x1F);
+                    }
+                    // Branch & JMP
+                    else if (['BEQ', 'BNE', 'BGT'].includes(inst)) {
+                        let immStr = parts[2];
+                        let imm = labels[immStr] !== undefined ? labels[immStr] : parseImm(immStr);
+                        machineCode = (op << 11) | (parseReg(parts[1]) << 8) | (imm & 0xFF);
+                    }
+                    else if (inst === 'JMP') {
+                        let immStr = parts[1];
+                        let imm = labels[immStr] !== undefined ? labels[immStr] : parseImm(immStr);
+                        machineCode = (op << 11) | (imm & 0xFF);
+                    }
+                    // SYSTEM
+                    else if (['NOP', 'HLT'].includes(inst)) {
+                        machineCode = (op << 11);
+                    }
+
+                    let hexStr = machineCode.toString(16).padStart(4, '0').toUpperCase();
+                    // $readmemh accepts inline Verilog comments!
+                    hexArray.push(`${hexStr} // ${cleanLine}`);
+                    pc++;
+
+                } catch (e) {
+                    errors.push(`Line ${lineNum + 1}: Syntax error`);
+                }
+            });
+
+            if (errors.length > 0) {
+                document.getElementById('hexOutput').value = errors.join('\n');
+            } else {
+                document.getElementById('hexOutput').value = hexArray.join('\n');
+            }
+        });
+
+        // Copy button
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const outBox = document.getElementById('hexOutput');
+            outBox.select();
+            document.execCommand('copy');
+        });
+
+        // Download button
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const text = document.getElementById('hexOutput').value;
+            if (!text || text.includes('Syntax error')) return;
+            
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'program.hex';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
