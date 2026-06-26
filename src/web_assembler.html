@@ -134,13 +134,6 @@
             return parseInt(r.replace(/r/i, '')) & 0x7;
         }
 
-        function parseImm(imm, mask) {
-            if (!imm) return 0;
-            let val = parseInt(imm);
-            if (isNaN(val)) throw new Error("Invalid immediate value");
-            return val & mask;
-        }
-
         function toHex16(num) {
             return num.toString(16).padStart(4, '0').toUpperCase();
         }
@@ -149,52 +142,78 @@
             const input = document.getElementById('asm-input').value.split('\n');
             const output = document.getElementById('hex-output');
             const status = document.getElementById('status');
+            
             let hexLines = [];
+            let labels = {}; // Stores label addresses
+            let instructions = []; // Stores valid code lines
             
             status.innerText = "";
             output.value = "";
 
             try {
+                // --- PASS 1: Find Labels & Clean Code ---
+                let address = 0;
                 for (let i = 0; i < input.length; i++) {
-                    let line = input[i].split('//')[0].trim(); // Remove comments
+                    let line = input[i].split('//')[0].trim();
                     if (!line) continue;
 
-                    // Clean commas and split
-                    let parts = line.replace(/,/g, ' ').split(/\s+/);
+                    if (line.endsWith(':')) {
+                        // It's a label declaration (e.g., "SWAP:")
+                        let labelName = line.slice(0, -1).trim();
+                        labels[labelName] = address; 
+                    } else {
+                        // It's a real instruction
+                        instructions.push({ text: line, lineNum: i + 1 });
+                        address++;
+                    }
+                }
+
+                // Helper function to resolve both numbers and labels
+                function parseImmOrLabel(val, mask) {
+                    if (!val) return 0;
+                    if (labels[val] !== undefined) return labels[val] & mask; // Return label address
+                    let num = parseInt(val);
+                    if (isNaN(num)) throw new Error(`Invalid immediate or unknown label: '${val}'`);
+                    return num & mask;
+                }
+
+                // --- PASS 2: Assemble to Machine Code ---
+                for (let i = 0; i < instructions.length; i++) {
+                    let text = instructions[i].text;
+                    let lineNum = instructions[i].lineNum;
+                    
+                    let parts = text.replace(/,/g, ' ').split(/\s+/);
                     let cmd = parts[0].toUpperCase();
                     let op = opcodes[cmd];
 
-                    if (op === undefined) throw new Error(`Unknown instruction '${cmd}' on line ${i+1}`);
+                    if (op === undefined) throw new Error(`Unknown instruction '${cmd}' on line ${lineNum}`);
 
                     let bin = op << 11;
 
-                    // R-Type (Op[15:11] | Rd[10:8] | Rs1[7:5] | Rs2[4:2] | 00)
+                    // R-Type
                     if (["ADD","SUB","AND","ORR","XOR","SHL","SHR","SLT","MUL","MAC","ROL","ROR"].includes(cmd)) {
                         bin |= (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | (parseReg(parts[3]) << 2);
-                    }
-                    // I-Type (Op[15:11] | Rd[10:8] | Imm8[7:0])
+                    } 
+                    // I-Type
                     else if (cmd === "LDI") {
-                        bin |= (parseReg(parts[1]) << 8) | parseImm(parts[2], 0xFF);
-                    }
-                    // Load/Store (Op[15:11] | Rd/Rs[10:8] | Rb[7:5] | Imm5[4:0])
+                        bin |= (parseReg(parts[1]) << 8) | parseImmOrLabel(parts[2], 0xFF);
+                    } 
+                    // Load/Store
                     else if (["LOAD", "STORE", "ADDI"].includes(cmd)) {
-                        bin |= (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | parseImm(parts[3], 0x1F);
-                    }
-                    // Branch (Op[15:11] | Rs1[10:8] | Imm8[7:0])
+                        bin |= (parseReg(parts[1]) << 8) | (parseReg(parts[2]) << 5) | parseImmOrLabel(parts[3], 0x1F);
+                    } 
+                    // Branch
                     else if (["BEQ", "BNE", "BGT"].includes(cmd)) {
-                        bin |= (parseReg(parts[1]) << 8) | parseImm(parts[2], 0xFF);
-                    }
-                    // Jump (Op[15:11] | 000 | Imm8[7:0])
+                        bin |= (parseReg(parts[1]) << 8) | parseImmOrLabel(parts[2], 0xFF);
+                    } 
+                    // Jump
                     else if (cmd === "JMP") {
-                        bin |= parseImm(parts[1], 0xFF);
-                    }
-                    // HLT (Op[15:11] | 00000000000)
-                    else if (cmd === "HLT") {
-                        // Already handled by initial shift
+                        bin |= parseImmOrLabel(parts[1], 0xFF);
                     }
 
                     hexLines.push(toHex16(bin));
                 }
+                
                 output.value = hexLines.join('\n');
                 status.style.color = "var(--success)";
                 status.innerText = "Assembly successful!";
