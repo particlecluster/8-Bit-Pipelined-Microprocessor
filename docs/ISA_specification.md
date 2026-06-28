@@ -18,7 +18,7 @@ Every instruction is 16 bits long, with the top 5 bits always defining the Opcod
 | **ADD** | `Rd, Rs1, Rs2` | `00000` | `0x00` | Addition: `Rd = Rs1 + Rs2` |
 | **SUB** | `Rd, Rs1, Rs2` | `00001` | `0x01` | Subtraction: `Rd = Rs1 - Rs2` |
 | **AND** | `Rd, Rs1, Rs2` | `00010` | `0x02` | Bitwise AND: `Rd = Rs1 & Rs2` |
-| **ORR** | `Rd, Rs1, Rs2` | `00011` | `0x03` | Bitwise OR: `Rd = Rs1 |
+| **ORR** | `Rd, Rs1, Rs2` | `00011` | `0x03` | Bitwise OR: `Rd = Rs1 OR Rs2` |
 | **XOR** | `Rd, Rs1, Rs2` | `00100` | `0x04` | Bitwise XOR: `Rd = Rs1 ^ Rs2` |
 | **SHL** | `Rd, Rs1, Rs2` | `00101` | `0x05` | Shift Left: `Rd = Rs1 << Rs2[2:0]` |
 | **SHR** | `Rd, Rs1, Rs2` | `00110` | `0x06` | Shift Right: `Rd = Rs1 >> Rs2[2:0]` |
