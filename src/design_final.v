@@ -132,7 +132,7 @@ module ControlUnit (
         halt         = 0;
         alu_b_src    = 2'b00;
         res_src      = 2'b00;
-        mem_addr_src = 0;
+        mem_addr_src = 0; //not used as of now
         base_reg_src = 0;
         rs1_src      = 0;
         rs2_src      = 0;
@@ -153,14 +153,12 @@ module ControlUnit (
                 reg_we       = 1;
                 res_src      = 2'b01;
                 base_reg_src = 0;
-                mem_addr_src = 1;
             end
             5'b0_1001: begin
                 mem_we       = 1;
                 rs1_src      = 1;
                 rs2_src      = 1;
                 base_reg_src = 1;
-                mem_addr_src = 1;
             end
             5'b0_1010: begin
                 pc_src = 1;
