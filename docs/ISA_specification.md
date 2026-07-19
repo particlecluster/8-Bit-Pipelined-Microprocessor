@@ -1,4 +1,4 @@
-** Updated 16-bit ISA table with the bit-level encoding mapped directly to each instruction**
+**Updated 16-bit ISA table with the bit-level encoding mapped directly to each instruction**
 
 **Legend:** `d` = Rd (Destination), `1` = Rs1 (Source 1), `2` = Rs2 (Source 2 / Base), `i` = Immediate bit, `x` = Unused/Ignored.
 
