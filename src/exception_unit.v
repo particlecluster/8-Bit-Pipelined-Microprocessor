@@ -1,4 +1,4 @@
-'timescale 1ns/ps
+`timescale 1ns / 1ps
 
 module Exception_Unit #(
     parameter integer ADDR_W = 8,
