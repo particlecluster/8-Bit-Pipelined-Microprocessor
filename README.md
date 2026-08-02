@@ -1,34 +1,43 @@
-# 8-Bit Custom Embedded CPU
+# 5-Stage Pipelined CPU Core
 
-A single-cycle, 8-bit soft-core processor written in Verilog. It executes 16-bit instructions and features a custom ALU, a unified Register File, and memory-mapped I/O tailored for embedded hardware control.
+**Team elec_03 | IIT Indore**
+
+A custom 16-bit instruction, 8-bit data pipelined microprocessor written in Verilog. This core implements a classic 5-stage pipeline (Fetch, Decode, Execute, Memory, Write-Back) with advanced architectural features including hardware branch prediction, full data forwarding, and memory-mapped peripherals.
+
+## Microarchitecture Diagram
+
+Click the diagram below to open the interactive, zoomable vector graphic.
+
+[](https://www.google.com/search?q=cpu_architecture.svg)
+*(Make sure to upload your `cpu_architecture.svg` to the repo for this link to work!)*
 
 ## Key Features
-* **Architecture:** 8-bit data path, 8-bit memory addressing, 16-bit instruction width.
-* **Execution:** Single-cycle, non-pipelined architecture.
-* **Registers:** 8 general-purpose 8-bit registers (`R0` is hardwired to `0x00`).
-* **Memory-Mapped I/O:** Built-in PWM generator mapped to memory address `0xFF` for direct hardware control (e.g., DC motors).
 
-## Hardware Modules
-* `CPU_Core`: The top-level module routing datapath wires and control signals.
-* `ProgramCounter`: Manages the 8-bit instruction pointer, handling sequential increments, branches, and halts.
-* `InstructionMemory`: 256-word ROM initialized via `program.hex`.
-* `ControlUnit`: Hardwired decoder translating 5-bit opcodes into datapath routing signals.
-* `RegisterFile`: 8x8-bit memory block with 2 read ports, 1 dedicated ALU read port, and 1 write port.
-* `ALU`: Supports arithmetic (ADD, SUB, MAC), logic (AND, OR, XOR), shifts, and 8x8-bit multiplication.
-* `DataMemory`: 255 bytes of RAM, bypassing address `0xFF` to the PWM peripheral.
-* `PWM_Generator`: Hardware timer that converts an 8-bit duty cycle into a continuous PWM waveform on `motor_pwm_pin`.
-* `ResetSynchronizer`: A 2-stage flip-flop circuit that safely converts an asynchronous external reset into a stable, synchronous system reset.
-* `Extender`: Expands 5-bit immediate values into 8-bit sign-extended and zero-extended formats for the ALU and memory addressing.
+* **5-Stage Pipeline:** Instruction Fetch (IF), Instruction Decode (ID), Execute (EX), Memory (MEM), and Write-Back (WB).
+* **Data Hazard Resolution:** Integrated Forwarding Unit (EX->EX and MEM->EX) and a Hazard Detection Unit to stall on load-use hazards.
+* **Branch Prediction:** Hardware Branch Target Buffer (BTB) and Branch History Table (BHT) to minimize control hazards.
+* **Exception & Interrupt Handling:** Integrated Coprocessor 0 (CP0) handles ALU overflows, illegal instructions, traps, and external hardware interrupts via `epc` and `cause` registers.
+* **Custom ISA:** 16-bit instructions, 5-bit opcodes, and 8 general-purpose registers (3-bit addressing). Supports Arithmetic, Logical, Memory, and Branching operations (including MAC).
 
-## Memory Map
-* `0x00 - 0xFE`: Standard Data RAM.
-* `0xFF`: PWM Duty Cycle Register. Writing to this address immediately updates the `motor_pwm_pin` output waveform.
+## Memory-Mapped I/O
 
-## Simulation & Usage
-1. Compile your assembly code into 16-bit hex instructions.
-2. Place the resulting hex file in the root directory and name it `program.hex`.
-3. Provide a clock signal (`clk`) and an active-high reset (`rst`) to the `CPU_Core`.
-4. Observe the `motor_pwm_pin` output for hardware control.
+The CPU interacts with the outside world using memory-mapped peripherals mapped to the top of the 8-bit address space:
+
+* `0xFF` - **PWM Motor Control:** Write duty cycle here to control `motor_pwm_pin`.
+* `0xFE` - **Digital Inputs:** Read external digital pins.
+* `0xFD` - **ADC Inputs:** Read external analog-to-digital converter pins.
+* `0xFC` - **UART TX:** Write data here to transmit via UART.
+* `0xFB` - **UART RX:** Read received UART data.
+* `0xFA` - **UART Status:** Check RX overrun, TX ready, and RX valid flags.
+
+## Module Overview
+
+* `CPU_Core_5Stage`: The top-level module wiring the pipeline registers.
+* `ControlUnit`: Centralized opcode decoder.
+* `ALU`: Performs arithmetic and logical operations, including hardware multiplication and overflow detection.
+* `BranchPredictor` & `BranchResolutionUnit`: Handles speculative execution and pipeline flushes on mispredicts.
+* `Exception_Unit`: Hardware trap and exception routing.
+* `UART_Peripheral`: 8-N-1 asynchronous serial communication block (115200 baud at 50MHz).
 <a href="docs/arch.svg" target="_blank">
   <img src="docs/arch.svg" alt="CPU Architecture" width="100%">
 </a>
