@@ -29,4 +29,4 @@ A single-cycle, 8-bit soft-core processor written in Verilog. It executes 16-bit
 2. Place the resulting hex file in the root directory and name it `program.hex`.
 3. Provide a clock signal (`clk`) and an active-high reset (`rst`) to the `CPU_Core`.
 4. Observe the `motor_pwm_pin` output for hardware control.
-![CPU Architecture](microarchitecture.svg)
+![CPU Architecture](docs/microarchitecture.svg)
