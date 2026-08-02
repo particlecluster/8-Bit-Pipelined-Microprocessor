@@ -6,9 +6,10 @@ A custom 16-bit instruction, 8-bit data pipelined microprocessor written in Veri
 
 ## Microarchitecture Diagram
 
+
 Click the diagram below to open the interactive, zoomable vector graphic.
 
-[](https://www.google.com/search?q=cpu_architecture.svg)
+[](https://www.google.com/search?q=docs/arch.svg)
 *(Make sure to upload your `cpu_architecture.svg` to the repo for this link to work!)*
 
 ## Key Features
