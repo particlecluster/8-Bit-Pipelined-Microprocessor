@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8-Bit Custom Microcontroller</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Load GSAP and ScrollTrigger -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+</head>
+<body>
+
+    <!-- Animated Live Background -->
+    <div class="live-bg"></div>
+
+    <!-- The Canvas that stays pinned to the screen -->
+    <canvas id="chip-canvas"></canvas>
+
+    <!-- The Scrollable Content container -->
+    <div id="content-container">
+        
+        <section class="feature-step">
+            <div class="text-block">
+                <h1>Custom 8-Bit Architecture</h1>
+                <p>Designed from the silicon up. No compromises.</p>
+            </div>
+        </section>
+
+        <section class="feature-step">
+            <div class="text-block">
+                <h2>5-Stage Pipeline</h2>
+                <p>Featuring static branch prediction, dedicated hardware hazard handling, and complete forwarding.</p>
+            </div>
+        </section>
+
+        <!-- Interactive Compiler Section -->
+        <section class="feature-step compiler-step">
+            <div class="compiler-panel" id="tilt-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Live C-to-Hex Compiler</h2>
+                        <p>Write C firmware, or edit the Assembly and Hex directly. Supports if/else, while/for loops, functions, and exceptions.</p>
+                    </div>
+                    <button class="doc-btn" id="open-doc-btn">Language Reference</button>
+                </div>
+                
+                <div class="editor-grid">
+                    <div class="editor-box">
+                        <h3>C Code Input</h3>
+                        <textarea id="c-input" spellcheck="false">
+#define PWM_OUT (*(volatile uint8_t*)0xFF)
+
+void accelerate() {
+    int speed = 0;
+    while (speed < 200) {
+        speed += 10;
+        PWM_OUT = speed;
+    }
+}
+
+void main() {
+    accelerate();
+    __asm__("HALT");
+}
+</textarea>
+                        <button id="compile-btn">Compile to Assembly</button>
+                    </div>
+
+                    <div class="editor-box">
+                        <h3>Assembly Code (Editable)</h3>
+                        <textarea id="asm-input" spellcheck="false">// Assembly will appear here...</textarea>
+                        <button class="download-btn" id="download-asm-btn">Download .txt</button>
+                    </div>
+
+                    <div class="editor-box">
+                        <h3>Machine Hex (Editable)</h3>
+                        <textarea id="hex-input" spellcheck="false">// Hex will appear here...</textarea>
+                        <button class="download-btn" id="download-hex-btn">Download .txt</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+    </div>
+
+    <!-- Documentation Modal Overlay -->
+    <div id="doc-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" id="close-doc-btn">&times;</span>
+            <h2 class="modal-title">Voltere Firmware C-Subset: Reference Guide</h2>
+            <p class="modal-subtitle">Welcome to the Voltere 8-Bit Architecture. Because this is a custom bare-metal processor with a strict 256-instruction memory depth and a specialized 27-opcode ISA, the compiler transpiles a strict subset of embedded C directly into hardware assembly.</p>
+            
+            <hr>
+
+            <h4>1. Supported Data Types</h4>
+            <p>All variables are mapped directly to the hardware's 8 general-purpose registers (<code>R0</code>-<code>R7</code>).</p>
+            <ul>
+                <li><code>uint8_t</code> (Standard unsigned 8-bit integer)</li>
+                <li><code>int8_t</code> (Signed 8-bit integer)</li>
+                <li><code>int</code> (Treated as 8-bit in this architecture)</li>
+            </ul>
+
+            <h4>2. Memory & Hardware Pointers</h4>
+            <p>You can read and write to the 256-byte Data RAM and memory-mapped hardware peripherals.</p>
+            <ul>
+                <li><strong>RAM Access:</strong> <code>MEM[0x10] = 255;</code> or <code>uint8_t val = MEM[0x20];</code></li>
+                <li><strong>Direct Hardware Pointers:</strong> <code>*(volatile uint8_t*)0xFF = 128;</code></li>
+                <li><strong>Pointer Cross-talk:</strong> <code>*(volatile uint8_t*)0xFF = *(volatile uint8_t*)0xFE;</code></li>
+            </ul>
+
+            <h4>3. Supported Operations</h4>
+            <p>The ALU supports single-operation math and bitwise logic per line.</p>
+            <ul>
+                <li><strong>Arithmetic:</strong> <code>+</code>, <code>-</code>, <code>*</code></li>
+                <li><strong>Bitwise:</strong> <code>&</code>, <code>|</code>, <code>^</code>, <code>&lt;&lt;</code>, <code>&gt;&gt;</code></li>
+                <li><strong>Compound Assignment:</strong> <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>&=</code>, <code>|=</code>, <code>^=</code>, <code>&lt;&lt;=</code>, <code>&gt;&gt;=</code></li>
+                <li><strong>Iterators:</strong> <code>++</code>, <code>--</code></li>
+            </ul>
+            <blockquote><strong>Note on Math:</strong> Complex nested equations like <code>a = (b + c) * d;</code> are <strong>not supported</strong>. Break them into sequential steps.</blockquote>
+
+            <h4>4. Control Structures</h4>
+            <p>The compiler dynamically calculates two's complement PC-relative branching for:</p>
+            <ul>
+                <li><strong>If / Else:</strong> <code>if (x == 5) { ... } else { ... }</code></li>
+                <li><strong>While Loops:</strong> <code>while (x &lt; 10) { ... }</code></li>
+                <li><strong>Do-While Loops:</strong> <code>do { ... } while (x != 0);</code></li>
+                <li><strong>For Loops:</strong> <code>for (int i = 0; i &lt; 10; i++) { ... }</code></li>
+            </ul>
+
+            <h4>5. Functions & Exceptions</h4>
+            <ul>
+                <li><strong>Main Wrapper:</strong> <code>void main() { ... }</code> (Required entry point)</li>
+                <li><strong>Custom Functions:</strong> <code>void my_routine() { ... }</code> (Zero-parameter routines only)</li>
+                <li><strong>Exception Service Routine:</strong> <code>void __attribute__((interrupt)) ISR() { ... }</code> (Maps to vector <code>0x80</code>)</li>
+            </ul>
+
+            <h4>6. Preprocessor Macros & Hardware Intrinsics</h4>
+            <ul>
+                <li><strong>Macros:</strong> <code>#define PWM_OUT (*(volatile uint8_t*)0xFF)</code></li>
+                <li><strong>Inline Assembly:</strong> <code>__asm__("TRAP");</code> or <code>__asm__("HALT");</code></li>
+                <li><strong>Coprocessor 0 Read:</strong> <code>uint8_t cause = __builtin_mfc0(0);</code></li>
+            </ul>
+
+            <hr>
+
+            <h4>🚫 Unsupported Features</h4>
+            <table class="doc-table">
+                <tr><th>Feature</th><th>Reason</th></tr>
+                <tr><td><strong>Standard Libraries</strong></td><td>The chip runs bare-metal without an OS.</td></tr>
+                <tr><td><strong>Arrays & Structs</strong></td><td>Dynamic memory allocation is not hardware-supported.</td></tr>
+                <tr><td><strong>Multi-Param Functions</strong></td><td>Requires a software stack memory model (Not in ISA).</td></tr>
+                <tr><td><strong>Floating Point Math</strong></td><td>The ALU is strictly 8-bit integer logic.</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
