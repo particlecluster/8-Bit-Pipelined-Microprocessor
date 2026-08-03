@@ -16,13 +16,18 @@ module DataMemory_UART #(
     output reg  [DATA_W-1:0] pwm_duty_cycle
 );
     reg [DATA_W-1:0] memory [0:(1<<ADDR_W)-1];
-    
+    integer i;
+
     initial begin
         pwm_duty_cycle = {DATA_W{1'b0}};
+        
+        
+        for (i = 0; i < (1<<ADDR_W); i = i + 1)
+            memory[i] = {DATA_W{1'b0}};
     end
 
-    // UART map: 0xFA = {rx_overrun, 5'b0, tx_ready, rx_valid},
-    //           0xFB = received byte, 0xFC = transmit-data write register.
+    
+    
     assign rd = (addr == 8'hFF) ? pwm_duty_cycle : 
                 (addr == 8'hFE) ? digital_in : 
                 (addr == 8'hFD) ? adc_in :
@@ -32,7 +37,13 @@ module DataMemory_UART #(
 
     always @(posedge clk) begin
         if (we) begin
-            if (addr == 8'hFF) pwm_duty_cycle <= wd;
+            
+            
+            
+            if (addr == 8'hFF) begin
+                pwm_duty_cycle <= wd;
+                memory[addr] <= wd;
+            end
             else if (addr != 8'hFE && addr != 8'hFD && addr != 8'hFA &&
                      addr != 8'hFB && addr != 8'hFC) memory[addr] <= wd; 
         end
