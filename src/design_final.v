@@ -120,7 +120,13 @@ module CPU_Core_5Stage #(
     wire               predict_taken_if, trigger_int;
     wire [ADDR_W-1:0]  epc;
     
-    wire reti_taken_ex, is_branch_instr_ex, branch_taken_ex, ex_mispredict;
+    // RETI and ERET return to independent pieces of architectural state.  Keeping
+    // them separate prevents an exception return from accidentally completing an
+    // outstanding interrupt (or vice versa).
+    wire reti_taken_ex = (ID_EX_opcode == `OP_RETI);
+    wire eret_taken_ex = (ID_EX_opcode == `OP_ERET) && in_exception;
+    wire return_taken_ex = reti_taken_ex || eret_taken_ex;
+    wire reti_taken_bru, is_branch_instr_ex, branch_taken_ex, ex_mispredict;
     wire [ADDR_W-1:0] actual_target_ex, ex_recovery_pc;
 
     wire              exception_taken;
@@ -128,8 +134,10 @@ module CPU_Core_5Stage #(
     wire [ADDR_W-1:0] exception_epc;
     wire [1:0]        exception_cause;
     wire              in_exception;
-    wire              eret_taken_ex = (ID_EX_opcode == `OP_ERET);
-    wire [ADDR_W-1:0] return_epc    = in_exception ? exception_epc : epc;
+    // The faulting instruction must not be retried: the handler resolves it and
+    // ERET resumes at the following instruction.  RETI instead uses the saved
+    // interrupt PC directly.
+    wire [ADDR_W-1:0] return_pc_ex = eret_taken_ex ? (exception_epc + 1'b1) : epc;
 
     InterruptController #(.ADDR_W(ADDR_W)) u_IntCtrl (
         .clk(clk),                      .rst(system_rst), 
@@ -170,7 +178,7 @@ module CPU_Core_5Stage #(
             IF_ID_pc          <= {ADDR_W{1'b0}};
             IF_ID_pred_taken  <= 1'b0; 
             IF_ID_fallback_pc <= {ADDR_W{1'b0}};
-        end else if (!load_use_hazard) begin
+        end else if (!load_use_hazard && !ID_EX_halt) begin
             IF_ID_instr       <= instr_if; 
             IF_ID_pc          <= pc_if;
             IF_ID_pred_taken  <= predict_taken_if; 
@@ -247,6 +255,14 @@ module CPU_Core_5Stage #(
             ID_EX_halt         <= 1'b0; 
             ID_EX_opcode       <= {OPCODE_W{1'b0}}; 
             ID_EX_pred_taken   <= 1'b0;
+        end else if (ID_EX_halt) begin
+            // HALT is an architectural terminal state.  Freeze decode along
+            // with the PC so that a following fetched word cannot clear it.
+            ID_EX_reg_we <= 1'b0;
+            ID_EX_mem_we <= 1'b0;
+            ID_EX_pc_src <= 1'b0;
+            ID_EX_halt   <= 1'b1;
+            ID_EX_opcode <= `OP_HALT;
         end else begin
             ID_EX_pc           <= IF_ID_pc; 
             ID_EX_rd1          <= reg_rd1_id; 
@@ -281,7 +297,8 @@ module CPU_Core_5Stage #(
     ForwardingUnit #(.DATA_W(DATA_W), .REG_ADDR_W(REG_ADDR_W)) u_FWD (
         .EX_MEM_reg_we(EX_MEM_reg_we),           .EX_MEM_rd_addr(EX_MEM_rd_addr),
         .EX_MEM_res_src(EX_MEM_res_src),         .EX_MEM_alu_result(EX_MEM_alu_result),
-        .EX_MEM_imm(EX_MEM_imm),                 .MEM_WB_reg_we(MEM_WB_reg_we), 
+        .EX_MEM_imm(EX_MEM_imm),                 .EX_MEM_fallback_pc(EX_MEM_fallback_pc),
+        .MEM_WB_reg_we(MEM_WB_reg_we), 
         .MEM_WB_rd_addr(MEM_WB_rd_addr),         .MEM_WB_reg_write_data(MEM_WB_reg_write_data),
         .ID_EX_rs1_addr(ID_EX_rs1_addr),         .ID_EX_rs2_addr(ID_EX_rs2_addr),
         .ID_EX_rd_in_addr(ID_EX_rd_in_addr),     .ID_EX_rd1(ID_EX_rd1), 
@@ -303,8 +320,17 @@ module CPU_Core_5Stage #(
         .greater(greater_ex)
     );
 
+    wire sign_a = fwd_rd1_ex[DATA_W-1];
+    wire sign_b = alu_b_in_ex[DATA_W-1];
+    wire sign_res = alu_result_ex[DATA_W-1];
+    // ADD is used for the ISA's unsigned byte arithmetic, so a carry out is an
+    // exception (e.g. 8'd200 + 8'd100).  ADDI uses a sign-extended immediate,
+    // therefore it retains conventional signed-overflow semantics.
+    wire signed_overflow = (sign_a == sign_b) && (sign_a != sign_res);
     wire [DATA_W:0] add_extended_ex = {1'b0, fwd_rd1_ex} + {1'b0, alu_b_in_ex};
-    wire alu_overflow_ex = (ID_EX_reg_we && (ID_EX_opcode == `OP_ADD || ID_EX_opcode == `OP_ADDI) && add_extended_ex[DATA_W]);
+    wire alu_overflow_ex = ID_EX_reg_we &&
+        (((ID_EX_opcode == `OP_ADD)  && (add_extended_ex[DATA_W] || signed_overflow)) ||
+         ((ID_EX_opcode == `OP_ADDI) && signed_overflow));
 
     Exception_Unit #(
         .ADDR_W(ADDR_W),
@@ -331,9 +357,10 @@ module CPU_Core_5Stage #(
         .pc_src(ID_EX_pc_src),             .zero(zero_ex), 
         .greater(greater_ex),              .pred_taken(ID_EX_pred_taken), 
         .imm(ID_EX_imm),                   .fallback_pc(ID_EX_fallback_pc),
-        .reg_target(fwd_rd1_ex),           .reti_taken(reti_taken_ex), 
+        .reg_target(fwd_rd1_ex),           .return_taken(return_taken_ex),
+        .return_pc(return_pc_ex),          .reti_taken(reti_taken_bru),
         .is_branch_instr(is_branch_instr_ex), .branch_taken(branch_taken_ex),
-        .epc(return_epc),                  .actual_target(actual_target_ex),  
+        .actual_target(actual_target_ex),  
         .ex_mispredict(ex_mispredict),     .ex_recovery_pc(ex_recovery_pc)
     );
 
@@ -543,7 +570,8 @@ module BranchResolutionUnit #(
     input  wire [ADDR_W-1:0]   reg_target,   
     input  wire                zero,
     input  wire                greater,
-    input  wire [ADDR_W-1:0]   epc,
+    input  wire                return_taken,
+    input  wire [ADDR_W-1:0]   return_pc,
 
     output wire                reti_taken,
     output wire                is_branch_instr,
@@ -557,7 +585,7 @@ module BranchResolutionUnit #(
                              (opcode == `OP_JNZ) | (opcode == `OP_JGT) |
                              (opcode == `OP_JAL) | (opcode == `OP_JR);
                              
-    assign reti_taken = (opcode == `OP_RETI) || (opcode == `OP_ERET);
+    assign reti_taken = return_taken;
 
     assign branch_taken = pc_src & (
                           (opcode == `OP_JMP) |
@@ -567,7 +595,7 @@ module BranchResolutionUnit #(
                           (opcode == `OP_JNZ & ~zero) |
                           (opcode == `OP_JGT & greater));
 
-    assign actual_target  = reti_taken ? ((opcode == `OP_ERET) ? (epc + 1'b1) : epc) :
+    assign actual_target  = return_taken ? return_pc :
                             (opcode == `OP_JR) ? reg_target : (ex_pc + imm);
 
     assign ex_mispredict  = (is_branch_instr && (pred_taken != branch_taken)) | reti_taken | (opcode == `OP_JR);
@@ -584,6 +612,7 @@ module ForwardingUnit #(
     input  wire [1:0]            EX_MEM_res_src,
     input  wire [DATA_W-1:0]     EX_MEM_alu_result,
     input  wire [DATA_W-1:0]     EX_MEM_imm,
+    input  wire [DATA_W-1:0]     EX_MEM_fallback_pc,
     input  wire                  MEM_WB_reg_we,
     input  wire [REG_ADDR_W-1:0] MEM_WB_rd_addr,
     input  wire [DATA_W-1:0]     MEM_WB_reg_write_data,
@@ -602,7 +631,11 @@ module ForwardingUnit #(
     wire exmem_can_forward = EX_MEM_reg_we && (EX_MEM_rd_addr != {REG_ADDR_W{1'b0}}) && (EX_MEM_res_src != 2'b01);
     wire memwb_can_forward = MEM_WB_reg_we && (MEM_WB_rd_addr != {REG_ADDR_W{1'b0}});
     
-    wire [DATA_W-1:0] EX_MEM_forward_data = (EX_MEM_res_src == 2'b10) ? EX_MEM_imm : EX_MEM_alu_result;
+    // JAL's link value is PC+1, not the ALU result.  It must be forwarded so a
+    // callee may immediately return through JR without an inserted NOP.
+    wire [DATA_W-1:0] EX_MEM_forward_data = (EX_MEM_res_src == 2'b10) ? EX_MEM_imm :
+                                             (EX_MEM_res_src == 2'b11) ? EX_MEM_fallback_pc :
+                                                                         EX_MEM_alu_result;
 
     assign fwd_rd1 = (exmem_can_forward && EX_MEM_rd_addr == ID_EX_rs1_addr) ? EX_MEM_forward_data :
                      (memwb_can_forward && MEM_WB_rd_addr == ID_EX_rs1_addr) ? MEM_WB_reg_write_data : ID_EX_rd1;
@@ -692,7 +725,12 @@ module BranchPredictor #(
 
     wire [4:0] ex_idx = ex_pc[4:0];
     always @(posedge clk) begin
-        if (!rst && ex_is_branch) begin
+        if (rst) begin
+            for (i = 0; i < 32; i = i + 1) begin
+                valid_btb[i] <= 1'b0;
+                bht[i]       <= 1'b0;
+            end
+        end else if (ex_is_branch) begin
             valid_btb[ex_idx]   <= 1;
             btb_tag[ex_idx]     <= ex_pc;
             btb_target[ex_idx]  <= ex_actual_target;
@@ -755,13 +793,23 @@ module ProgramCounter #(
 endmodule
 
 module InstructionMemory #(
-    parameter integer ADDR_W  = 8,
-    parameter integer INSTR_W = 16
+    parameter ADDR_W = 8,
+    parameter INSTR_W = 16
 ) (
-    input  wire [ADDR_W-1:0]  pc,
+    input wire [ADDR_W-1:0] pc,
     output wire [INSTR_W-1:0] instr
 );
     reg [INSTR_W-1:0] memory [0:(1<<ADDR_W)-1];
+    integer i;
+
+    initial begin
+        // Unused program space is a NOP (all-zero ADD r0,r0,r0), never X.
+        // This keeps speculative fetches and post-branch pipeline slots safe.
+        for (i = 0; i < (1<<ADDR_W); i = i + 1)
+            memory[i] = {INSTR_W{1'b0}};
+        $readmemh("program.hex", memory);
+    end
+
     assign instr = memory[pc];
 endmodule
 
@@ -814,9 +862,14 @@ module DataMemory_UART #(
     output reg  [DATA_W-1:0] pwm_duty_cycle
 );
     reg [DATA_W-1:0] memory [0:(1<<ADDR_W)-1];
-    
+    integer i;
+
     initial begin
         pwm_duty_cycle = {DATA_W{1'b0}};
+        // A deterministic RAM image is required for software such as the TRAP
+        // demonstration, which intentionally loads a zero-valued location.
+        for (i = 0; i < (1<<ADDR_W); i = i + 1)
+            memory[i] = {DATA_W{1'b0}};
     end
 
     // UART map: 0xFA = {rx_overrun, 5'b0, tx_ready, rx_valid},
@@ -830,7 +883,13 @@ module DataMemory_UART #(
 
     always @(posedge clk) begin
         if (we) begin
-            if (addr == 8'hFF) pwm_duty_cycle <= wd;
+            // Keep the pre-existing PWM register at 0xFF while also retaining
+            // the RAM write.  Exception handlers can therefore use 0xFF as the
+            // specified error marker without removing the PWM capability.
+            if (addr == 8'hFF) begin
+                pwm_duty_cycle <= wd;
+                memory[addr] <= wd;
+            end
             else if (addr != 8'hFE && addr != 8'hFD && addr != 8'hFA &&
                      addr != 8'hFB && addr != 8'hFC) memory[addr] <= wd; 
         end
