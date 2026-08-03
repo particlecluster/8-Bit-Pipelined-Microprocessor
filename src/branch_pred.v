@@ -41,7 +41,12 @@ module BranchPredictor #(
 
     wire [4:0] ex_idx = ex_pc[4:0];
     always @(posedge clk) begin
-        if (!rst && ex_is_branch) begin
+        if (rst) begin
+            for (i = 0; i < 32; i = i + 1) begin
+                valid_btb[i] <= 1'b0;
+                bht[i]       <= 1'b0;
+            end
+        end else if (ex_is_branch) begin
             valid_btb[ex_idx]   <= 1;
             btb_tag[ex_idx]     <= ex_pc;
             btb_target[ex_idx]  <= ex_actual_target;
