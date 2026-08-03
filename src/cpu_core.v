@@ -1,13 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-// =============================================================================
-// CPU_Core_5Stage.v  --  Team elec_03, IIT Indore
-// =============================================================================
 
-// -----------------------------------------------------------------------------
-// ISA Opcodes
-// -----------------------------------------------------------------------------
 `define OP_ADD   5'b00000
 `define OP_SUB   5'b00001
 `define OP_AND   5'b00010
@@ -37,9 +31,7 @@
 `define OP_MFC0  5'b11010   
 `define OP_HALT  5'b11111
 
-// =============================================================================
-// TOP MODULE: 5-Stage CPU Core
-// =============================================================================
+
 module CPU_Core_5Stage #(
     parameter integer DATA_W     = 8,
     parameter integer ADDR_W     = 8,
@@ -62,17 +54,12 @@ module CPU_Core_5Stage #(
 
     wire system_rst;
 
-    // =========================================================================
-    // PIPELINE REGISTERS
-    // =========================================================================
-
-    // -- IF/ID --
     reg [INSTR_W-1:0] IF_ID_instr;
     reg [ADDR_W-1:0]  IF_ID_pc;
     reg               IF_ID_pred_taken;
     reg [ADDR_W-1:0]  IF_ID_fallback_pc;
 
-    // -- ID/EX --
+    
     reg [ADDR_W-1:0]     ID_EX_pc;
     reg [DATA_W-1:0]     ID_EX_rd1, ID_EX_rd2, ID_EX_rd3;
     reg [DATA_W-1:0]     ID_EX_imm, ID_EX_imm5_sext, ID_EX_imm5_zext;
@@ -84,23 +71,21 @@ module CPU_Core_5Stage #(
     reg                  ID_EX_pred_taken;
     reg [ADDR_W-1:0]     ID_EX_fallback_pc;
 
-    // -- EX/MEM --
+    
     reg [DATA_W-1:0]     EX_MEM_alu_result, EX_MEM_mem_addr, EX_MEM_store_data, EX_MEM_imm;
     reg [ADDR_W-1:0]     EX_MEM_fallback_pc; 
     reg [REG_ADDR_W-1:0] EX_MEM_rd_addr;
     reg                  EX_MEM_reg_we, EX_MEM_mem_we;
     reg [1:0]            EX_MEM_res_src;
 
-    // -- MEM/WB --
+    
     reg [DATA_W-1:0]     MEM_WB_alu_result, MEM_WB_mem_data, MEM_WB_imm;
     reg [ADDR_W-1:0]     MEM_WB_fallback_pc; 
     reg [REG_ADDR_W-1:0] MEM_WB_rd_addr;
     reg                  MEM_WB_reg_we;
     reg [1:0]            MEM_WB_res_src;
 
-    // =========================================================================
-    // SYSTEM CONTROL & WRITE-BACK
-    // =========================================================================
+    
     wire [DATA_W-1:0] MEM_WB_reg_write_data =
         (MEM_WB_res_src == 2'b00) ? MEM_WB_alu_result :
         (MEM_WB_res_src == 2'b01) ? MEM_WB_mem_data   :
@@ -112,15 +97,17 @@ module CPU_Core_5Stage #(
         .sync_rst_out(system_rst)
     );
 
-    // =========================================================================
-    // STAGE 1: INSTRUCTION FETCH (IF)
-    // =========================================================================
+    
     wire [ADDR_W-1:0]  pc_if, next_pc_if;
     wire [INSTR_W-1:0] instr_if;
     wire               predict_taken_if, trigger_int;
     wire [ADDR_W-1:0]  epc;
     
-    wire reti_taken_ex, is_branch_instr_ex, branch_taken_ex, ex_mispredict;
+    
+    wire reti_taken_ex = (ID_EX_opcode == `OP_RETI);
+    wire eret_taken_ex = (ID_EX_opcode == `OP_ERET) && in_exception;
+    wire return_taken_ex = reti_taken_ex || eret_taken_ex;
+    wire reti_taken_bru, is_branch_instr_ex, branch_taken_ex, ex_mispredict;
     wire [ADDR_W-1:0] actual_target_ex, ex_recovery_pc;
 
     wire              exception_taken;
@@ -128,8 +115,10 @@ module CPU_Core_5Stage #(
     wire [ADDR_W-1:0] exception_epc;
     wire [1:0]        exception_cause;
     wire              in_exception;
-    wire              eret_taken_ex = (ID_EX_opcode == `OP_ERET);
-    wire [ADDR_W-1:0] return_epc    = in_exception ? exception_epc : epc;
+    
+    
+    
+    wire [ADDR_W-1:0] return_pc_ex = eret_taken_ex ? (exception_epc + 1'b1) : epc;
 
     InterruptController #(.ADDR_W(ADDR_W)) u_IntCtrl (
         .clk(clk),                      .rst(system_rst), 
@@ -152,8 +141,8 @@ module CPU_Core_5Stage #(
     ProgramCounter #(.ADDR_W(ADDR_W)) u_PC (
         .clk(clk), 
         .rst(system_rst),
-        // An accepted interrupt must redirect the PC even when decode has
-        // requested a load-use hold; otherwise the one-cycle request is lost.
+        
+        
         .halt(ID_EX_halt || (load_use_hazard && !trigger_int)),
         .next_pc(exception_taken ? exception_vector_pc : next_pc_if),
         .pc(pc_if)
@@ -170,7 +159,7 @@ module CPU_Core_5Stage #(
             IF_ID_pc          <= {ADDR_W{1'b0}};
             IF_ID_pred_taken  <= 1'b0; 
             IF_ID_fallback_pc <= {ADDR_W{1'b0}};
-        end else if (!load_use_hazard) begin
+        end else if (!load_use_hazard && !ID_EX_halt) begin
             IF_ID_instr       <= instr_if; 
             IF_ID_pc          <= pc_if;
             IF_ID_pred_taken  <= predict_taken_if; 
@@ -178,9 +167,8 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 2: INSTRUCTION DECODE (ID)
-    // =========================================================================
+    
+    
     wire [OPCODE_W-1:0]   opcode_id  = IF_ID_instr[15:11];
     wire [DATA_W-1:0]     imm_id     = IF_ID_instr[7:0];
     wire [REG_ADDR_W-1:0] rd_addr_id = IF_ID_instr[10:8];
@@ -247,6 +235,14 @@ module CPU_Core_5Stage #(
             ID_EX_halt         <= 1'b0; 
             ID_EX_opcode       <= {OPCODE_W{1'b0}}; 
             ID_EX_pred_taken   <= 1'b0;
+        end else if (ID_EX_halt) begin
+            
+            
+            ID_EX_reg_we <= 1'b0;
+            ID_EX_mem_we <= 1'b0;
+            ID_EX_pc_src <= 1'b0;
+            ID_EX_halt   <= 1'b1;
+            ID_EX_opcode <= `OP_HALT;
         end else begin
             ID_EX_pc           <= IF_ID_pc; 
             ID_EX_rd1          <= reg_rd1_id; 
@@ -273,15 +269,14 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 3: EXECUTE (EX)
-    // =========================================================================
+    
     wire [DATA_W-1:0] fwd_rd1_ex, fwd_rd2_ex, fwd_rd3_ex;
     
     ForwardingUnit #(.DATA_W(DATA_W), .REG_ADDR_W(REG_ADDR_W)) u_FWD (
         .EX_MEM_reg_we(EX_MEM_reg_we),           .EX_MEM_rd_addr(EX_MEM_rd_addr),
         .EX_MEM_res_src(EX_MEM_res_src),         .EX_MEM_alu_result(EX_MEM_alu_result),
-        .EX_MEM_imm(EX_MEM_imm),                 .MEM_WB_reg_we(MEM_WB_reg_we), 
+        .EX_MEM_imm(EX_MEM_imm),                 .EX_MEM_fallback_pc(EX_MEM_fallback_pc),
+        .MEM_WB_reg_we(MEM_WB_reg_we), 
         .MEM_WB_rd_addr(MEM_WB_rd_addr),         .MEM_WB_reg_write_data(MEM_WB_reg_write_data),
         .ID_EX_rs1_addr(ID_EX_rs1_addr),         .ID_EX_rs2_addr(ID_EX_rs2_addr),
         .ID_EX_rd_in_addr(ID_EX_rd_in_addr),     .ID_EX_rd1(ID_EX_rd1), 
@@ -303,8 +298,17 @@ module CPU_Core_5Stage #(
         .greater(greater_ex)
     );
 
+    wire sign_a = fwd_rd1_ex[DATA_W-1];
+    wire sign_b = alu_b_in_ex[DATA_W-1];
+    wire sign_res = alu_result_ex[DATA_W-1];
+    
+    
+    
+    wire signed_overflow = (sign_a == sign_b) && (sign_a != sign_res);
     wire [DATA_W:0] add_extended_ex = {1'b0, fwd_rd1_ex} + {1'b0, alu_b_in_ex};
-    wire alu_overflow_ex = (ID_EX_reg_we && (ID_EX_opcode == `OP_ADD || ID_EX_opcode == `OP_ADDI) && add_extended_ex[DATA_W]);
+    wire alu_overflow_ex = ID_EX_reg_we &&
+        (((ID_EX_opcode == `OP_ADD)  && (add_extended_ex[DATA_W] || signed_overflow)) ||
+         ((ID_EX_opcode == `OP_ADDI) && signed_overflow));
 
     Exception_Unit #(
         .ADDR_W(ADDR_W),
@@ -331,9 +335,10 @@ module CPU_Core_5Stage #(
         .pc_src(ID_EX_pc_src),             .zero(zero_ex), 
         .greater(greater_ex),              .pred_taken(ID_EX_pred_taken), 
         .imm(ID_EX_imm),                   .fallback_pc(ID_EX_fallback_pc),
-        .reg_target(fwd_rd1_ex),           .reti_taken(reti_taken_ex), 
+        .reg_target(fwd_rd1_ex),           .return_taken(return_taken_ex),
+        .return_pc(return_pc_ex),          .reti_taken(reti_taken_bru),
         .is_branch_instr(is_branch_instr_ex), .branch_taken(branch_taken_ex),
-        .epc(return_epc),                  .actual_target(actual_target_ex),  
+        .actual_target(actual_target_ex),  
         .ex_mispredict(ex_mispredict),     .ex_recovery_pc(ex_recovery_pc)
     );
 
@@ -354,9 +359,7 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 4: MEMORY (MEM)
-    // =========================================================================
+    
     wire [DATA_W-1:0] mem_rd_mem;
     wire [DATA_W-1:0] motor_duty_cycle_mem;
     wire [DATA_W-1:0] uart_rx_data_mem;
@@ -400,10 +403,6 @@ module CPU_Core_5Stage #(
             MEM_WB_res_src     <= EX_MEM_res_src;
         end
     end
-
-    // =========================================================================
-    // STAGE 5: WRITE BACK (WB)
-    // =========================================================================
 
     PWM_Generator #(.DATA_W(DATA_W)) u_PWM (
         .clk(clk), 
