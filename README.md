@@ -114,6 +114,38 @@ The CPU features an 8-bit memory space (`0x00`–`0xFF`). Top addresses `0xFA` t
    - Instructions `MFC0` read CP0 registers; `ERET` exits exception context cleanly.
 
 ---
+## 🔬 Synthesis & Physical Implementation Results
+
+### Physical Layout & Floorplan Diagram
+<a href="docs/layout.png" target="_blank">
+  <img src="docs/layout.png" alt="CPU Physical Layout Diagram" width="100%">
+</a>
+*(Note: Place your physical layout diagram at docs/layout.png or update the file path above)*
+
+### Timing & Frequency Performance
+| Parameter | Value | Unit | Notes / Details |
+| :--- | :---: | :---: | :--- |
+| **Max Operating Frequency ($F_{max}$)** | _[Insert Fmax, e.g., 50.0 / 100.0]_ | MHz | Target Synthesis Constraint |
+| **Minimum Clock Period ($T_{clk}$)** | _[Insert Period, e.g., 20.0 / 10.0]_ | ns | $T_{clk} = 1 / F_{max}$ |
+| **Critical Path Latency** | _[Insert Latency]_ | ns | ALU / Forwarding Mux -> Register File |
+| **Pipeline Latency** | 5 | Cycles | IF -> ID -> EX -> MEM -> WB |
+| **Target Technology / Family** | _[Insert Tech, e.g., Artix-7 FPGA / 45nm CMOS]_ | - | Synthesis Target |
+
+### Resource Utilization & Gate Count
+| Resource Type | Utilization / Count | Available | Percentage (%) |
+| :--- | :---: | :---: | :---: |
+| **LUTs (Look-Up Tables)** | _[Insert LUTs]_ | _[Total]_ | _[%]_ |
+| **Flip-Flops (Registers)**| _[Insert FFs]_ | _[Total]_ | _[%]_ |
+| **Block RAMs (BRAM)** | _[Insert BRAMs]_ | _[Total]_ | _[%]_ |
+| **DSP Blocks** | _[Insert DSPs]_ | _[Total]_ | _[%]_ |
+| **Total Equivalent Gates** | _[Insert Gate Count]_ | - | ASIC Standard Cell Count |
+
+### Power Analysis Summary
+| Power Category | Value | Unit |
+| :--- | :---: | :---: |
+| **Dynamic Power** | _[Insert Dynamic Power]_ | mW |
+| **Static / Leakage Power** | _[Insert Leakage Power]_ | mW |
+| **Total Power Consumption** | _[Insert Total Power]_ | mW |
 
 
 
