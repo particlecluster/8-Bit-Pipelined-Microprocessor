@@ -18,7 +18,6 @@ A high-performance, 16-bit instruction, 8-bit data pipelined microprocessor core
         [u_BP (BTB)]   [Load-Use Hazard] [u_FWD / CP0]   [u_PWM]
 ```
 
-        <a href="docs/arch.svg" target="_blank">
   <img src="docs/arch.svg" alt="CPU Architecture" width="100%">
 </a>
 
