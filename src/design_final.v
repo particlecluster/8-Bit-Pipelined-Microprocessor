@@ -1,13 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-// =============================================================================
-// CPU_Core_5Stage.v  --  Team elec_03, IIT Indore
-// =============================================================================
 
-// -----------------------------------------------------------------------------
-// ISA Opcodes
-// -----------------------------------------------------------------------------
 `define OP_ADD   5'b00000
 `define OP_SUB   5'b00001
 `define OP_AND   5'b00010
@@ -37,9 +31,7 @@
 `define OP_MFC0  5'b11010   
 `define OP_HALT  5'b11111
 
-// =============================================================================
-// TOP MODULE: 5-Stage CPU Core
-// =============================================================================
+
 module CPU_Core_5Stage #(
     parameter integer DATA_W     = 8,
     parameter integer ADDR_W     = 8,
@@ -62,17 +54,12 @@ module CPU_Core_5Stage #(
 
     wire system_rst;
 
-    // =========================================================================
-    // PIPELINE REGISTERS
-    // =========================================================================
-
-    // -- IF/ID --
     reg [INSTR_W-1:0] IF_ID_instr;
     reg [ADDR_W-1:0]  IF_ID_pc;
     reg               IF_ID_pred_taken;
     reg [ADDR_W-1:0]  IF_ID_fallback_pc;
 
-    // -- ID/EX --
+    
     reg [ADDR_W-1:0]     ID_EX_pc;
     reg [DATA_W-1:0]     ID_EX_rd1, ID_EX_rd2, ID_EX_rd3;
     reg [DATA_W-1:0]     ID_EX_imm, ID_EX_imm5_sext, ID_EX_imm5_zext;
@@ -84,23 +71,21 @@ module CPU_Core_5Stage #(
     reg                  ID_EX_pred_taken;
     reg [ADDR_W-1:0]     ID_EX_fallback_pc;
 
-    // -- EX/MEM --
+    
     reg [DATA_W-1:0]     EX_MEM_alu_result, EX_MEM_mem_addr, EX_MEM_store_data, EX_MEM_imm;
     reg [ADDR_W-1:0]     EX_MEM_fallback_pc; 
     reg [REG_ADDR_W-1:0] EX_MEM_rd_addr;
     reg                  EX_MEM_reg_we, EX_MEM_mem_we;
     reg [1:0]            EX_MEM_res_src;
 
-    // -- MEM/WB --
+    
     reg [DATA_W-1:0]     MEM_WB_alu_result, MEM_WB_mem_data, MEM_WB_imm;
     reg [ADDR_W-1:0]     MEM_WB_fallback_pc; 
     reg [REG_ADDR_W-1:0] MEM_WB_rd_addr;
     reg                  MEM_WB_reg_we;
     reg [1:0]            MEM_WB_res_src;
 
-    // =========================================================================
-    // SYSTEM CONTROL & WRITE-BACK
-    // =========================================================================
+    
     wire [DATA_W-1:0] MEM_WB_reg_write_data =
         (MEM_WB_res_src == 2'b00) ? MEM_WB_alu_result :
         (MEM_WB_res_src == 2'b01) ? MEM_WB_mem_data   :
@@ -112,17 +97,13 @@ module CPU_Core_5Stage #(
         .sync_rst_out(system_rst)
     );
 
-    // =========================================================================
-    // STAGE 1: INSTRUCTION FETCH (IF)
-    // =========================================================================
+    
     wire [ADDR_W-1:0]  pc_if, next_pc_if;
     wire [INSTR_W-1:0] instr_if;
     wire               predict_taken_if, trigger_int;
     wire [ADDR_W-1:0]  epc;
     
-    // RETI and ERET return to independent pieces of architectural state.  Keeping
-    // them separate prevents an exception return from accidentally completing an
-    // outstanding interrupt (or vice versa).
+    
     wire reti_taken_ex = (ID_EX_opcode == `OP_RETI);
     wire eret_taken_ex = (ID_EX_opcode == `OP_ERET) && in_exception;
     wire return_taken_ex = reti_taken_ex || eret_taken_ex;
@@ -134,9 +115,9 @@ module CPU_Core_5Stage #(
     wire [ADDR_W-1:0] exception_epc;
     wire [1:0]        exception_cause;
     wire              in_exception;
-    // The faulting instruction must not be retried: the handler resolves it and
-    // ERET resumes at the following instruction.  RETI instead uses the saved
-    // interrupt PC directly.
+    
+    
+    
     wire [ADDR_W-1:0] return_pc_ex = eret_taken_ex ? (exception_epc + 1'b1) : epc;
 
     InterruptController #(.ADDR_W(ADDR_W)) u_IntCtrl (
@@ -160,8 +141,8 @@ module CPU_Core_5Stage #(
     ProgramCounter #(.ADDR_W(ADDR_W)) u_PC (
         .clk(clk), 
         .rst(system_rst),
-        // An accepted interrupt must redirect the PC even when decode has
-        // requested a load-use hold; otherwise the one-cycle request is lost.
+        
+        
         .halt(ID_EX_halt || (load_use_hazard && !trigger_int)),
         .next_pc(exception_taken ? exception_vector_pc : next_pc_if),
         .pc(pc_if)
@@ -186,9 +167,8 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 2: INSTRUCTION DECODE (ID)
-    // =========================================================================
+    
+    
     wire [OPCODE_W-1:0]   opcode_id  = IF_ID_instr[15:11];
     wire [DATA_W-1:0]     imm_id     = IF_ID_instr[7:0];
     wire [REG_ADDR_W-1:0] rd_addr_id = IF_ID_instr[10:8];
@@ -256,8 +236,8 @@ module CPU_Core_5Stage #(
             ID_EX_opcode       <= {OPCODE_W{1'b0}}; 
             ID_EX_pred_taken   <= 1'b0;
         end else if (ID_EX_halt) begin
-            // HALT is an architectural terminal state.  Freeze decode along
-            // with the PC so that a following fetched word cannot clear it.
+            
+            
             ID_EX_reg_we <= 1'b0;
             ID_EX_mem_we <= 1'b0;
             ID_EX_pc_src <= 1'b0;
@@ -289,9 +269,7 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 3: EXECUTE (EX)
-    // =========================================================================
+    
     wire [DATA_W-1:0] fwd_rd1_ex, fwd_rd2_ex, fwd_rd3_ex;
     
     ForwardingUnit #(.DATA_W(DATA_W), .REG_ADDR_W(REG_ADDR_W)) u_FWD (
@@ -323,9 +301,9 @@ module CPU_Core_5Stage #(
     wire sign_a = fwd_rd1_ex[DATA_W-1];
     wire sign_b = alu_b_in_ex[DATA_W-1];
     wire sign_res = alu_result_ex[DATA_W-1];
-    // ADD is used for the ISA's unsigned byte arithmetic, so a carry out is an
-    // exception (e.g. 8'd200 + 8'd100).  ADDI uses a sign-extended immediate,
-    // therefore it retains conventional signed-overflow semantics.
+    
+    
+    
     wire signed_overflow = (sign_a == sign_b) && (sign_a != sign_res);
     wire [DATA_W:0] add_extended_ex = {1'b0, fwd_rd1_ex} + {1'b0, alu_b_in_ex};
     wire alu_overflow_ex = ID_EX_reg_we &&
@@ -381,9 +359,7 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 4: MEMORY (MEM)
-    // =========================================================================
+    
     wire [DATA_W-1:0] mem_rd_mem;
     wire [DATA_W-1:0] motor_duty_cycle_mem;
     wire [DATA_W-1:0] uart_rx_data_mem;
@@ -428,10 +404,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    // =========================================================================
-    // STAGE 5: WRITE BACK (WB)
-    // =========================================================================
-
     PWM_Generator #(.DATA_W(DATA_W)) u_PWM (
         .clk(clk), 
         .rst(system_rst), 
@@ -440,11 +412,6 @@ module CPU_Core_5Stage #(
     );
 
 endmodule
-
-
-// =============================================================================
-// SUB-MODULES
-// =============================================================================
 
 module Exception_Unit #(
     parameter integer ADDR_W = 8,
@@ -631,8 +598,8 @@ module ForwardingUnit #(
     wire exmem_can_forward = EX_MEM_reg_we && (EX_MEM_rd_addr != {REG_ADDR_W{1'b0}}) && (EX_MEM_res_src != 2'b01);
     wire memwb_can_forward = MEM_WB_reg_we && (MEM_WB_rd_addr != {REG_ADDR_W{1'b0}});
     
-    // JAL's link value is PC+1, not the ALU result.  It must be forwarded so a
-    // callee may immediately return through JR without an inserted NOP.
+    
+    
     wire [DATA_W-1:0] EX_MEM_forward_data = (EX_MEM_res_src == 2'b10) ? EX_MEM_imm :
                                              (EX_MEM_res_src == 2'b11) ? EX_MEM_fallback_pc :
                                                                          EX_MEM_alu_result;
@@ -803,8 +770,8 @@ module InstructionMemory #(
     integer i;
 
     initial begin
-        // Unused program space is a NOP (all-zero ADD r0,r0,r0), never X.
-        // This keeps speculative fetches and post-branch pipeline slots safe.
+        
+        
         for (i = 0; i < (1<<ADDR_W); i = i + 1)
             memory[i] = {INSTR_W{1'b0}};
         $readmemh("program.hex", memory);
@@ -866,14 +833,14 @@ module DataMemory_UART #(
 
     initial begin
         pwm_duty_cycle = {DATA_W{1'b0}};
-        // A deterministic RAM image is required for software such as the TRAP
-        // demonstration, which intentionally loads a zero-valued location.
+        
+        
         for (i = 0; i < (1<<ADDR_W); i = i + 1)
             memory[i] = {DATA_W{1'b0}};
     end
 
-    // UART map: 0xFA = {rx_overrun, 5'b0, tx_ready, rx_valid},
-    //           0xFB = received byte, 0xFC = transmit-data write register.
+    
+    
     assign rd = (addr == 8'hFF) ? pwm_duty_cycle : 
                 (addr == 8'hFE) ? digital_in : 
                 (addr == 8'hFD) ? adc_in :
@@ -882,10 +849,7 @@ module DataMemory_UART #(
                 memory[addr];
 
     always @(posedge clk) begin
-        if (we) begin
-            // Keep the pre-existing PWM register at 0xFF while also retaining
-            // the RAM write.  Exception handlers can therefore use 0xFF as the
-            // specified error marker without removing the PWM capability.
+        if (we) begin       
             if (addr == 8'hFF) begin
                 pwm_duty_cycle <= wd;
                 memory[addr] <= wd;
@@ -946,10 +910,7 @@ module ResetSynchronizer (
     end
 endmodule
 
-// =============================================================================
-// UART PERIPHERAL
-// 8 data bits, no parity, one stop bit (8-N-1), with single-byte RX buffering.
-// =============================================================================
+
 module UART_Peripheral #(
     parameter integer CLK_FREQ_HZ = 50_000_000,
     parameter integer BAUD_RATE   = 115_200
@@ -1102,9 +1063,7 @@ module UART_Receiver #(
                 RX_START: if (baud_count == HALF_BIT - 1) begin
                     baud_count <= {COUNTER_W{1'b0}};
                     if (!rx_sync) begin
-                        bit_index <= 3'd0;
-                        // Start was validated at its midpoint. Preload the
-                        // counter to sample the first data bit at its midpoint.
+                        bit_index <= 3'd0;         
                         baud_count <= HALF_BIT;
                         state <= RX_DATA;
                     end else state <= RX_IDLE;
