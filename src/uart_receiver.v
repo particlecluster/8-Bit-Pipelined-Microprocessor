@@ -49,8 +49,8 @@ module UART_Receiver #(
                     baud_count <= {COUNTER_W{1'b0}};
                     if (!rx_sync) begin
                         bit_index <= 3'd0;
-                        // Start was validated at its midpoint. Preload the
-                        // counter to sample the first data bit at its midpoint.
+                        
+                        
                         baud_count <= HALF_BIT;
                         state <= RX_DATA;
                     end else state <= RX_IDLE;
@@ -76,3 +76,4 @@ module UART_Receiver #(
         end
     end
 endmodule
+
