@@ -457,18 +457,10 @@ iverilog -I src -o sim_test src/*.v sim/bonus2/tb_bonus2.v ; vvp sim_test
 │   │   ├── bonus2_programs.asm         # Exception Assembly Programs
 │   │   └── *.hex                       # Overflow, Illegal, Trap Hex Files
 │   ├── bonus2_individual/              # Isolated Unit Exception Testbenches
-│   ├── fact/                           # Factorial Benchmark Suite
 │   ├── uart/                           # Dedicated UART TX Verification Suite
 │   └── end_eval/                       # Core Evaluation Benchmark Suite
-├── tools/                              # Software Tools & Assemblers
-│   └── web_assembler.html              # Interactive Browser-Based Custom CPU Assembler
-├── presentation/                       # Presentation Slides & Deck Materials
-│   ├── Team_VOLTERE_8bit_Microprocessor_IITISoC_2026.pptx # Final Presentation Deck
-│   └── deck_generator/                 # Slide Deck Visual Assets & Generation Script
 └── docs/                               # Architectural Documentation & Schematics
     ├── ISA_specification.md            # Detailed Machine Instruction Encoding Manual
-    ├── arch.svg                        # 5-Stage CPU Architecture Diagram (SVG)
-    ├── microarchitecture.svg           # Detailed Microarchitectural Schematic
-    └── Architecture_Diagram.png        # System Architecture Diagram (PNG)
+    └── arch.svg                        # 5-Stage CPU Architecture Diagram (SVG)
 ```
 
