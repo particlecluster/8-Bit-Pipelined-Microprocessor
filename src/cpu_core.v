@@ -387,7 +387,9 @@ module CPU_Core_5Stage #(
         .addr(EX_MEM_mem_addr),                  .wd(EX_MEM_store_data),
         .digital_in(external_digital_pins),      .adc_in(external_adc_pins),
         .uart_rx_data(uart_rx_data_mem),         .uart_status(uart_status_mem),
-        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem)
+        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem),
+        .i2c_data_in(8'h00),                     .i2c_status_in(8'h00),
+        .accel_x(),                              .accel_y()
     );
 
     always @(posedge clk) begin
