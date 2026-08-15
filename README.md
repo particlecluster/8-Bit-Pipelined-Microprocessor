@@ -2,9 +2,9 @@
 
 **Team Voltere | IIT Indore | IITISoC 2026**
 
-A synthesizable System-on-Chip (SoC) built entirely in Verilog, featuring a custom 5-stage pipelined 8-bit RISC microprocessor that communicates with an MPU-6050 IMU sensor over I2C and drives an 8×8 LED matrix display with real-time tilt-controlled rendering.
+A synthesizable System-on-Chip (SoC) built entirely in Verilog, featuring a custom 5-stage pipelined 8-bit RISC microprocessor that communicates with an MPU-6050 IMU sensor over I2C and drives an 8×8 LED matrix display with real-time fluid physics rendering.
 
-The microprocessor initializes and continuously polls the IMU sensor over I²C, routing signed 8-bit acceleration data through the CPU's memory-mapped I/O bus to a dedicated hardware LED Matrix Controller. The controller applies a cascaded 2-stage digital low-pass filter, Schmitt-trigger amplitude hysteresis, and a 16 ms temporal debounce filter to render a **smooth 2×2 dot** that glides across the 8×8 LED matrix in direct response to board tilt — functioning as a precision digital spirit level. The dot visually resembles a liquid droplet rolling on glass due to the ultra-smooth analog-like motion produced by the DSP filter pipeline.
+The microprocessor initializes and continuously polls the IMU sensor over I²C, routing signed 8-bit acceleration data through the CPU's memory-mapped I/O bus to a dedicated hardware LED Matrix Controller. The controller runs a **hardware auto-calibration sequence on every reset** to eliminate IMU zero-g bias, then renders a **3×3 viscous water droplet** that physically flows across the matrix in response to board tilt — simulating liquid momentum, viscous drag, fluid elongation, and wall-impact splashing.
 
 ---
 
@@ -99,15 +99,32 @@ The data stored at `0xF4` and `0xF3` is then continuously read by the hardware `
 
 ---
 
-## 💧 LED Matrix Controller — 2×2 Spirit Level Dot
+## 🌊 LED Matrix Controller — 3×3 Viscous Water Droplet + Auto-Calibration
 
-The [`src/led_matrix_controller.v`](src/led_matrix_controller.v) module drives the 1588BS 8×8 LED matrix, rendering a **2×2 dot** (4 lit pixels) that tracks physical board tilt from the IMU. Despite being just 4 pixels, the dot moves with such smooth, analog-like motion from the DSP filter pipeline that it visually resembles a liquid droplet rolling on glass.
+The [`src/led_matrix_controller.v`](src/led_matrix_controller.v) module implements a **real-time fluid physics engine** for the 1588BS 8×8 LED matrix. It renders a **3×3 viscous water droplet** (9 lit pixels) that physically flows in response to board tilt, with hardware auto-calibration on every reset to eliminate IMU zero-g offset bias.
 
-The dot position is expressed as a top-left corner coordinate $(r_0, c_0) \in [0, 6]$:
-- **At rest (flat on table):** Locked at center, Rows 3–4, Cols 3–4
-- **Full forward tilt (~20°–25°):** Moves to Row 0–1 (top edge)
-- **Full backward tilt (~20°–25°):** Moves to Row 6–7 (bottom edge)
-- **Full left/right tilt (~20°–25°):** Moves to Col 0–1 or Col 6–7 (side edges)
+> **Note:** The module comment header references "2×2 Dot Spirit Level" — this is a legacy comment from an earlier revision. The current active build is the 3×3 fluid drop engine with auto-calibration.
+
+### Startup Auto-Calibration (Press RESET — Keep Board Flat)
+
+On every reset, before fluid simulation begins, the hardware runs a **1.2-second auto-calibration loop** directly inside the FPGA:
+
+```
+  Phase 1 (0–200 ms):    Sensor wake-up settling period
+                         → Matrix displays blinking 2×2 center dot
+
+  Phase 2 (200–1224 ms): Accumulates 64 IMU samples (1 every 16 ms)
+                         → Matrix displays blinking outer target ring
+
+  Phase 3 (> 1224 ms):   Computes bias_x = avg(accel_x), bias_y = avg(accel_y)
+                         → Locks offsets, starts fluid simulation
+```
+
+> ⚠️ **Keep the board completely flat during the first 1.2 seconds after pressing RESET.** The calibration learns the resting zero-g bias so the droplet sits dead-center when flat.
+
+After calibration, all sensor readings are corrected:
+$$\text{corrected\_ax} = \text{raw\_ax} - \text{bias\_x}$$
+$$\text{corrected\_ay} = \text{raw\_ay} - \text{bias\_y}$$
 
 ### Signal Processing Pipeline
 
@@ -116,23 +133,26 @@ The dot position is expressed as a top-left corner coordinate $(r_0, c_0) \in [0
                           │
                           ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Stage 1: 128-Sample Q8.8 Fixed-Point EMA Filter    │  Strips sensor noise & quantization steps
-  │  y₁[n] = y₁[n-1] + ((x[n] - y₁[n-1]) >> 7)        │  α = 1/128 → ~128 ms time constant
+  │  Hardware Auto-Calibration (1.2 s, runs on reset)   │  64-sample average → bias_x, bias_y
+  └─────────────────────┬───────────────────────────────┘
+                        ▼  corrected = raw - bias
+  ┌─────────────────────────────────────────────────────┐
+  │  Stage 1: 64-Sample Q8.8 Fixed-Point EMA Filter     │  Strips sensor quantization & spikes
+  │  y₁[n] = y₁[n-1] + ((x[n] - y₁[n-1]) >> 6)        │  α = 1/64
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Stage 2: 32-Sample Q8.8 Fixed-Point EMA Filter     │  2nd-order analog-smooth roll-off
-  │  y₂[n] = y₂[n-1] + ((y₁[n] - y₂[n-1]) >> 5)       │  α = 1/32 → silky deceleration curve
+  │  Stage 2: 32-Sample Q8.8 Fixed-Point EMA Filter     │  2nd-order smooth analog roll-off
+  │  y₂[n] = y₂[n-1] + ((y₁[n] - y₂[n-1]) >> 5)       │  α = 1/32 → silky fluid feel
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Schmitt Trigger Amplitude Hysteresis               │  Multi-level state machine with
-  │  Deadzone ±7 LSB → 3 steps → Edge ±19 LSB          │  3 LSB hysteresis gap per level
+  │  Sub-Pixel Q8.8 Fluid Kinematics (50 Hz / 20 ms)   │  Gravity accel + viscous drag
+  │  vel += gravity; vel *= 0.844 (drag); pos += vel    │  Resting velocity zero-clamped
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  16 ms Temporal Debounce Filter                     │  Target must be stable for 16
-  │  (2 full matrix scan frames of verification)        │  consecutive ms before updating
+  │  Shape Renderer: 3×3 Core + Fluid Tail + Splashes  │  Dynamic deformation on impact
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
@@ -141,27 +161,16 @@ The dot position is expressed as a top-left corner coordinate $(r_0, c_0) \in [0
   └─────────────────────────────────────────────────────┘
 ```
 
-### Position State Machine (Schmitt Trigger Hysteresis)
-
-The Schmitt trigger prevents the dot from flickering at pixel boundaries. Each axis uses independent multi-level hysteresis:
-
-| State | Threshold to Enter | Threshold to Leave | Display Rows/Cols |
-| :--- | :---: | :---: | :--- |
-| **Center** | — | ±7 LSB | 3, 4 |
-| **Step 1** (near) | ±7 LSB | ±4 LSB | 2, 3 or 4, 5 |
-| **Step 2** (mid) | ±13 LSB | ±10 LSB | 1, 2 or 5, 6 |
-| **Edge** (border) | ±19 LSB | ±16 LSB | 0, 1 or 6, 7 |
-
-### Dot Behavior Summary
+### Fluid Drop Behavior
 
 | Condition | Behavior |
 | :--- | :--- |
-| **Board flat on table** | Dot locked dead-center, zero jitter (±7 LSB deadzone) |
-| **Gentle tilt** | Dot slides smoothly to Step 1 with slow analog deceleration |
-| **Medium tilt** | Dot progresses to Step 2 with damped overshoot feel |
-| **Full tilt (~20°–25°)** | Dot reaches the physical outer border of the 8×8 matrix |
-| **Diagonal tilt** | Dot moves diagonally to a corner with correct 2D tilt mapping |
-| **Rapid tilt change** | 16 ms debounce prevents flicker at step boundaries |
+| **Flat on table (post-calibration)** | Drop locked dead-center (Rows 2–4, Cols 2–4), zero jitter |
+| **Gentle tilt** | Drop slowly accelerates and rolls with viscous fluid drag |
+| **Steep tilt** | Drop rushes across the matrix; elongates into a trailing stream tail |
+| **Wall impact** | Drop flattens into a 5–7 pixel wide splash film along the border, then pulls back into 3×3 blob |
+| **Diagonal tilt** | Drop flows toward corners with correct 2D momentum composition |
+| **Return to flat** | Viscous drag decelerates and re-centers the drop smoothly |
 
 ---
 
