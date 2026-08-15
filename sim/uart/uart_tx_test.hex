@@ -1,0 +1,44 @@
+// uart_tx_test.hex  --  assembled from uart_tx_test.asm
+//
+// Address layout:
+//   PC 00 : LDI  r5, 0xFA          r5 = UART status base addr
+//   PC 01 : LDI  r2, 0x02          tx_ready mask
+//   PC 02 : LDI  r1, 0x48          'H'
+//   PC 03 : LDD  r4, r5, 0         poll1 - read status
+//   PC 04 : AND  r4, r4, r2        isolate tx_ready bit
+//   PC 05 : JZ   r4, 0xFE          branch back to PC 03 if not ready
+//   PC 06 : STD  r1, 0xFC          send 'H'
+//   PC 07 : LDI  r1, 0x69          'i'
+//   PC 08 : LDD  r4, r5, 0         poll2 - read status
+//   PC 09 : AND  r4, r4, r2
+//   PC 0A : JZ   r4, 0xFE          branch back to PC 08
+//   PC 0B : STD  r1, 0xFC          send 'i'
+//   PC 0C : LDI  r1, 0x21          '!'
+//   PC 0D : LDD  r4, r5, 0         poll3 - read status
+//   PC 0E : AND  r4, r4, r2
+//   PC 0F : JZ   r4, 0xFE          branch back to PC 0D
+//   PC 10 : STD  r1, 0xFC          send '!'
+//   PC 11 : LDI  r3, 0x42          completion marker
+//   PC 12 : STD  r3, 0xBE          memory[0xBE] = 0x42
+//   PC 13 : HALT
+
+3DFA
+3A02
+3948
+44A0
+1490
+5CFE
+A9FC
+3969
+44A0
+1490
+5CFE
+A9FC
+3921
+44A0
+1490
+5CFE
+A9FC
+3B42
+ABBE
+F800

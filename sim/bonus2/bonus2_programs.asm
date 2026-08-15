@@ -7,26 +7,28 @@
 ; bonus_factorial.hex -- recursive fact(5), expected result: memory[0xA0] = 120
 ; r6 is a descending stack pointer.  Each recursive frame saves n and r7.
 ; ============================================================================
-        LDI  r6, 0x70
-        LDI  r1, 5
-        JAL  r7, fact             ; r7 = return address
-        STD  r1, [0xA0]           ; result = 120
+        LDI  R6, 0x70
+        LDI  R1, 5
+        JAL  R7, fact
+        STD  R1, 0xA0
         HALT
 
-fact:   JZ   r1, fact_base
-        STR  r7, [r6 + 0]         ; save caller return address
-        STR  r1, [r6 + 1]         ; save n
-        ADDI r6, r6, -2
-        ADDI r1, r1, -1
-        JAL  r7, fact
-        ADDI r6, r6, 2
-        LDD  r2, [r6 + 1]         ; restored n
-        MUL  r1, r2, r1           ; n * fact(n - 1)
-        LDD  r7, [r6 + 0]         ; restored return address
-        JR   r7
+fact:  
+        JZ   R1, fact_base
+        STR  R7, R6, 0
+        STR  R1, R6, 1
+        ADDI R6, R6, -2
+        ADDI R1, R1, -1
+        JAL  R7, fact
+        ADDI R6, R6, 2
+        LDD  R2, R6, 1
+        MUL  R1, R2, R1
+        LDD  R7, R6, 0
+        JR   R7
+
 fact_base:
-        LDI  r1, 1
-        JR   r7
+        LDI  R1, 1
+        JR   R7
 
 ; ============================================================================
 ; Exception images share this handler at 0x80.  It conditionally dispatches

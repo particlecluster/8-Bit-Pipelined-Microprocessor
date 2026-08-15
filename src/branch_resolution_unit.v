@@ -1,4 +1,7 @@
 `timescale 1ns / 1ps
+`default_nettype none
+
+`include "defines.v"
 
 module BranchResolutionUnit #(
     parameter integer ADDR_W   = 8,
@@ -13,7 +16,8 @@ module BranchResolutionUnit #(
     input  wire [ADDR_W-1:0]   reg_target,   
     input  wire                zero,
     input  wire                greater,
-    input  wire [ADDR_W-1:0]   epc,
+    input  wire                return_taken,
+    input  wire [ADDR_W-1:0]   return_pc,
 
     output wire                reti_taken,
     output wire                is_branch_instr,
@@ -27,7 +31,7 @@ module BranchResolutionUnit #(
                              (opcode == `OP_JNZ) | (opcode == `OP_JGT) |
                              (opcode == `OP_JAL) | (opcode == `OP_JR);
                              
-    assign reti_taken = (opcode == `OP_RETI) || (opcode == `OP_ERET);
+    assign reti_taken = return_taken;
 
     assign branch_taken = pc_src & (
                           (opcode == `OP_JMP) |
@@ -37,7 +41,7 @@ module BranchResolutionUnit #(
                           (opcode == `OP_JNZ & ~zero) |
                           (opcode == `OP_JGT & greater));
 
-    assign actual_target  = reti_taken ? ((opcode == `OP_ERET) ? (epc + 1'b1) : epc) :
+    assign actual_target  = return_taken ? return_pc :
                             (opcode == `OP_JR) ? reg_target : (ex_pc + imm);
 
     assign ex_mispredict  = (is_branch_instr && (pred_taken != branch_taken)) | reti_taken | (opcode == `OP_JR);

@@ -21,12 +21,16 @@ module tb_bonus2;
     wire [7:0] trap_epc = trap_cpu.exception_epc;
     wire [7:0] saved_epc = trap_cpu.u_DMEM.memory[8'hDD];
     wire [7:0] blocked_trap_store = trap_cpu.u_DMEM.memory[8'hCC];
+    wire [7:0] register1 = overflow_cpu.u_RegFile.registers[1];
+    wire [7:0] register2 = overflow_cpu.u_RegFile.registers[2];
+    wire [7:0] register3 = overflow_cpu.u_RegFile.registers[3];
+    wire [7:0] register4 = overflow_cpu.u_RegFile.registers[4];
 
     initial begin
         $dumpfile("sim/bonus2/bonus2_exceptions.vcd");
         $dumpvars(0, clk, rst, overflow_pc, overflow_cause, overflow_epc, clamped, unaffected,
                   illegal_cause, illegal_epc, error_marker, blocked_store,
-                  trap_cause, trap_epc, saved_epc, blocked_trap_store);
+                  trap_cause, trap_epc, saved_epc, blocked_trap_store, register1, register2, register3, register4);
         #1;
         $readmemh("sim/bonus2/bonus_overflow.hex", overflow_cpu.u_IMEM.memory);
         $readmemh("sim/bonus2/bonus_illegal.hex", illegal_cpu.u_IMEM.memory);

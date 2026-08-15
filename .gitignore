@@ -1,0 +1,29 @@
+# Simulation output dumps & waveforms
+*.vcd
+*.vvp
+*.out
+sim_*
+sim_test
+/sim/**/sim
+/sim/**/sim_*
+/sim/**/sim.vcd
+/sim/**/*.vcd
+
+# Vivado build artifacts & logs
+*.log
+*.jou
+*.str
+.Xil/
+*.dcp
+*.bit
+*.bin
+*.rpx
+
+# Node.js dependencies (presentation builder)
+node_modules/
+npm-debug.log*
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini

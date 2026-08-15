@@ -363,17 +363,29 @@ Self-checking testbenches located in [`sim/comprehensive_test/`](sim/comprehensi
 ### Running Testbenches (Icarus Verilog)
 
 ```powershell
-# Full integrated system test
-iverilog -o sim/comprehensive_test/sim_master design.v sim/comprehensive_test/tb_master_suite.v
-vvp sim/comprehensive_test/sim_master
+# 1. Master Verification Suite (Full Pipelined System)
+iverilog -I src -o sim_test src/*.v sim/comprehensive_test/tb_master_suite.v ; vvp sim_test
 
-# CPU + I2C + MPU-6050 co-simulation
-iverilog -o sim/tb_cpu_i2c design.v sim/tb_cpu_i2c.v
-vvp sim/tb_cpu_i2c
+# 2. CPU + I2C + MPU-6050 Co-Simulation
+iverilog -o sim_test design.v src/i2c_peripheral.v src/led_matrix_controller.v sim/tb_cpu_i2c.v ; vvp sim_test
 
-# ISA instruction verification
-iverilog -o sim/comprehensive_test/sim_isa design.v sim/comprehensive_test/tb_isa_instructions.v
-vvp sim/comprehensive_test/sim_isa
+# 3. ISA Instruction Verification Suite
+iverilog -I src -o sim_test src/*.v sim/comprehensive_test/tb_isa_instructions.v ; vvp sim_test
+
+# 4. Data Hazards & Forwarding Suite
+iverilog -I src -o sim_test src/*.v sim/comprehensive_test/tb_hazards_forwarding.v ; vvp sim_test
+
+# 5. Branch Prediction & Flush Suite
+iverilog -I src -o sim_test src/*.v sim/comprehensive_test/tb_branch_prediction.v ; vvp sim_test
+
+# 6. Hardware UART Serial Loopback Verification (115,200 baud)
+iverilog -I src -o sim_test src/*.v sim/comprehensive_test/tb_uart_full_loopback.v ; vvp sim_test
+
+# 7. Factorial Benchmark (Bonus 1)
+iverilog -I src -o sim_test src/*.v sim/bonus1/tb_bonus1.v ; vvp sim_test
+
+# 8. Exceptions & Trap Verification (Bonus 2)
+iverilog -I src -o sim_test src/*.v sim/bonus2/tb_bonus2.v ; vvp sim_test
 ```
 
 ---
@@ -382,7 +394,7 @@ vvp sim/comprehensive_test/sim_isa
 
 1. Open **Vivado 2020.1+** and create a new project targeting `xc7a35tcsg324-1`.
 2. Add all sources:
-   - `design.v` (top-level + CPU core)
+   - `design.v` (top-level SoC integration + CPU core)
    - `src/led_matrix_controller.v`
    - `src/i2c_peripheral.v`
    - `program.hex.txt` (referenced by the Instruction ROM inside `design.v`)
@@ -398,19 +410,65 @@ vvp sim/comprehensive_test/sim_isa
 
 ```
 .
-├── design.v                        # Top-level SoC: CPU core + MMIO + all peripherals
-├── arty_a7.xdc                     # Xilinx physical constraints (all pin assignments)
-├── program.hex.txt                 # CPU firmware (machine code for Instruction ROM)
-├── src/
-│   ├── led_matrix_controller.v     # 8×8 matrix fluid physics + DSP filter engine
-│   ├── i2c_peripheral.v            # Hardware I2C Master Controller (100 kHz)
-│   └── oled_controller.v           # Optional OLED display controller
-├── sim/
-│   ├── tb_cpu_i2c.v                # CPU + I2C + MPU-6050 mock slave co-simulation
-│   ├── tb_i2c.v                    # Standalone I2C peripheral testbench
-│   └── comprehensive_test/         # Full ISA, hazard, branch, exception, UART testbenches
-├── docs/
-│   ├── ISA_specification.md        # Detailed instruction encoding reference
-│   └── arch.svg                    # CPU microarchitecture diagram
-└── c++ assembler/                  # C++ assembler tool for converting .asm → program.hex.txt
+├── design.v                            # Synthesizable Top-Level SoC (CPU + MMIO + Peripherals)
+├── arty_a7.xdc                         # Xilinx Artix-7 Pin Constraint Map
+├── program.hex.txt                     # CPU Firmware Machine Code for Instruction ROM
+├── src/                                # Modular Synthesizable Verilog Subsystems
+│   ├── cpu_core.v                      # 5-Stage Pipelined CPU Core Top
+│   ├── defines.v                       # CPU ISA Opcode & Control Definitions
+│   ├── alu.v                           # Arithmetic Logic Unit (28 Ops, MUL, MAC, Shifts)
+│   ├── pc.v                            # Program Counter Register
+│   ├── reg_file.v                      # 8 x 8-bit Dual-Read Single-Write Register File
+│   ├── instr_memory.v                  # 256-Byte Instruction Memory
+│   ├── data_memory.v                   # 256-Byte Data RAM & Memory-Mapped Peripheral Decoder
+│   ├── control_unit.v                  # Main Instruction Decode & Pipeline Control Unit
+│   ├── branch_pred.v                   # 32-Entry Dynamic Branch Target Buffer & Predictor
+│   ├── branch_resolution_unit.v        # Branch Outcome & Mispredict Recovery Resolver
+│   ├── fwd_unit.v                      # EX->EX & MEM->EX Operand Forwarding Unit
+│   ├── exception_unit.v                # CP0 Coprocessor (Overflow, Illegal, Trap, Interrupts)
+│   ├── int_control.v                   # Hardware Interrupt Vectoring Controller
+│   ├── extender.v                      # Sign/Zero Immediate Extender
+│   ├── reset_synchronizer.v            # Power-on Reset Synchronizer
+│   ├── pwm_generator.v                 # 8-bit Hardware PWM Motor Generator
+│   ├── uart_peripheral.v               # 115200 Baud Full-Duplex UART MMIO Controller
+│   ├── uart_receiver.v                 # UART Serial Rx Deserializer
+│   ├── uart_transmitter.v              # UART Serial Tx Serializer
+│   ├── led_matrix_controller.v         # 8×8 Matrix Fluid Physics + DSP Filter Engine
+│   ├── i2c_peripheral.v                # Hardware I2C Master Engine (100 kHz)
+│   └── oled_controller.v               # Optional SPI/I2C OLED Display Controller
+├── sim/                                # Verification & Simulation Testbenches
+│   ├── tb_cpu_i2c.v                    # CPU + I2C + MPU-6050 Co-Simulation Testbench
+│   ├── tb_i2c.v                        # Standalone I2C Protocol Engine Testbench
+│   ├── clk_wiz_0_stub.v                # Clocking Wizard Simulation Model
+│   ├── comprehensive_test/             # Self-Checking Verification Test Suites
+│   │   ├── tb_master_suite.v           # Integrated System-Level Master Test
+│   │   ├── tb_isa_instructions.v       # Complete 28-Instruction ISA Test
+│   │   ├── tb_hazards_forwarding.v     # Data Hazards & Forwarding Test
+│   │   ├── tb_branch_prediction.v      # Dynamic Branch Prediction & Flush Test
+│   │   ├── tb_exceptions_interrupts.v  # CP0 Exceptions & Interrupt Test
+│   │   ├── tb_peripherals_uart.v       # GPIO, ADC, PWM & UART TX Test
+│   │   └── tb_uart_full_loopback.v     # Full Serial TX->RX Loopback Test
+│   ├── bonus1/                         # Recursive Factorial Algorithm Test
+│   │   ├── tb_bonus1.v                 # Factorial Testbench
+│   │   ├── bonus1_factorial.asm        # Assembly Source
+│   │   └── bonus_factorial.hex         # Machine Code Hex
+│   ├── bonus2/                         # Exception Handling Verification
+│   │   ├── tb_bonus2.v                 # Exception Testbench
+│   │   ├── bonus2_programs.asm         # Exception Assembly Programs
+│   │   └── *.hex                       # Overflow, Illegal, Trap Hex Files
+│   ├── bonus2_individual/              # Isolated Unit Exception Testbenches
+│   ├── fact/                           # Factorial Benchmark Suite
+│   ├── uart/                           # Dedicated UART TX Verification Suite
+│   └── end_eval/                       # Core Evaluation Benchmark Suite
+├── tools/                              # Software Tools & Assemblers
+│   └── web_assembler.html              # Interactive Browser-Based Custom CPU Assembler
+├── presentation/                       # Presentation Slides & Deck Materials
+│   ├── Team_VOLTERE_8bit_Microprocessor_IITISoC_2026.pptx # Final Presentation Deck
+│   └── deck_generator/                 # Slide Deck Visual Assets & Generation Script
+└── docs/                               # Architectural Documentation & Schematics
+    ├── ISA_specification.md            # Detailed Machine Instruction Encoding Manual
+    ├── arch.svg                        # 5-Stage CPU Architecture Diagram (SVG)
+    ├── microarchitecture.svg           # Detailed Microarchitectural Schematic
+    └── Architecture_Diagram.png        # System Architecture Diagram (PNG)
 ```
+

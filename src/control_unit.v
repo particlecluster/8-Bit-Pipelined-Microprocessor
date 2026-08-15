@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-
+`include "defines.v"
 module ControlUnit #(
     parameter integer OPCODE_W = 5
 ) (

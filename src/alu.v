@@ -1,5 +1,5 @@
 `timescale 1ns / 1ps
-
+`include "defines.v"
 module ALU #(
     parameter integer DATA_W   = 8,
     parameter integer OPCODE_W = 5

@@ -1,4 +1,4 @@
-`timescape 1ns / 1ps
+`timescale 1ns / 1ps
 
 module Extender #(
     parameter integer DATA_W = 8,
