@@ -11,11 +11,9 @@ module InstructionMemory #(
     integer i;
 
     initial begin
-        
-        
         for (i = 0; i < (1<<ADDR_W); i = i + 1)
             memory[i] = {INSTR_W{1'b0}};
-        $readmemh("program.hex", memory);
+        $readmemh("program.hex.txt", memory);
     end
 
     assign instr = memory[pc];

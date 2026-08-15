@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-
 `define OP_ADD   5'b00000
 `define OP_SUB   5'b00001
 `define OP_AND   5'b00010
@@ -31,7 +30,6 @@
 `define OP_MFC0  5'b11010   
 `define OP_HALT  5'b11111
 
-
 module CPU_Core_5Stage #(
     parameter integer DATA_W     = 8,
     parameter integer ADDR_W     = 8,
@@ -39,27 +37,42 @@ module CPU_Core_5Stage #(
     parameter integer OPCODE_W   = 5,
     parameter integer REG_ADDR_W = 3,
     parameter integer IMM5_W     = 5,
-    parameter integer CLK_FREQ_HZ = 50_000_000,
+    parameter integer CLK_FREQ_HZ = 25_000_000,   // UPDATED: Must match your new 25 MHz clock!
     parameter integer BAUD_RATE   = 115_200
 ) (
-    input  wire              clk,
-    input  wire              rst,
-    input  wire              interrupt_pin,
-    input  wire [DATA_W-1:0] external_digital_pins,
-    input  wire [DATA_W-1:0] external_adc_pins,
-    output wire              motor_pwm_pin,
-    input  wire              uart_rx,
-    output wire              uart_tx
+    input  wire              clk_100mhz,          // 100 MHz onboard clock
+    input  wire              rst,                 // Reset button
+    output wire [3:0]        led_out,             // LD3..LD0 onboard green LEDs
+    inout  wire              i2c_sda,             // MPU-6050 I2C SDA
+    inout  wire              i2c_scl,             // MPU-6050 I2C SCL
+    output wire [7:0]        matrix_rows,         // PMOD JC (Row 0..7, Anodes)
+    output wire [7:0]        matrix_cols          // PMOD JD (Col 0..7, Cathodes)
 );
 
-    wire system_rst;
+    // Unused ports tied off
+    wire              interrupt_pin = 1'b0;
+    wire [DATA_W-1:0] external_digital_pins = 8'b0;
+    wire [DATA_W-1:0] external_adc_pins = 8'b0;
+    wire              motor_pwm_pin;
+    wire              uart_rx = 1'b1;
+    wire              uart_tx;
 
+    // --- NEW CLOCKING LOGIC ---
+    wire clk; // This is the new, safe 25MHz clock that runs your CPU
+
+    clk_wiz_0 u_clock_divider (
+        .clk_in1(clk_100mhz),
+        .clk_out1(clk)
+    );
+    // --------------------------
+
+    wire system_rst;
+    
     reg [INSTR_W-1:0] IF_ID_instr;
     reg [ADDR_W-1:0]  IF_ID_pc;
     reg               IF_ID_pred_taken;
     reg [ADDR_W-1:0]  IF_ID_fallback_pc;
 
-    
     reg [ADDR_W-1:0]     ID_EX_pc;
     reg [DATA_W-1:0]     ID_EX_rd1, ID_EX_rd2, ID_EX_rd3;
     reg [DATA_W-1:0]     ID_EX_imm, ID_EX_imm5_sext, ID_EX_imm5_zext;
@@ -71,21 +84,18 @@ module CPU_Core_5Stage #(
     reg                  ID_EX_pred_taken;
     reg [ADDR_W-1:0]     ID_EX_fallback_pc;
 
-    
     reg [DATA_W-1:0]     EX_MEM_alu_result, EX_MEM_mem_addr, EX_MEM_store_data, EX_MEM_imm;
     reg [ADDR_W-1:0]     EX_MEM_fallback_pc; 
     reg [REG_ADDR_W-1:0] EX_MEM_rd_addr;
     reg                  EX_MEM_reg_we, EX_MEM_mem_we;
     reg [1:0]            EX_MEM_res_src;
 
-    
     reg [DATA_W-1:0]     MEM_WB_alu_result, MEM_WB_mem_data, MEM_WB_imm;
     reg [ADDR_W-1:0]     MEM_WB_fallback_pc; 
     reg [REG_ADDR_W-1:0] MEM_WB_rd_addr;
     reg                  MEM_WB_reg_we;
     reg [1:0]            MEM_WB_res_src;
 
-    
     wire [DATA_W-1:0] MEM_WB_reg_write_data =
         (MEM_WB_res_src == 2'b00) ? MEM_WB_alu_result :
         (MEM_WB_res_src == 2'b01) ? MEM_WB_mem_data   :
@@ -93,16 +103,14 @@ module CPU_Core_5Stage #(
 
     ResetSynchronizer u_RstSync (
         .clk(clk), 
-        .async_rst_in(rst), 
+        .async_rst_in(!rst), 
         .sync_rst_out(system_rst)
     );
 
-    
     wire [ADDR_W-1:0]  pc_if, next_pc_if;
     wire [INSTR_W-1:0] instr_if;
     wire               predict_taken_if, trigger_int;
     wire [ADDR_W-1:0]  epc;
-    
     
     wire reti_taken_ex = (ID_EX_opcode == `OP_RETI);
     wire eret_taken_ex = (ID_EX_opcode == `OP_ERET) && in_exception;
@@ -115,8 +123,6 @@ module CPU_Core_5Stage #(
     wire [ADDR_W-1:0] exception_epc;
     wire [1:0]        exception_cause;
     wire              in_exception;
-    
-    
     
     wire [ADDR_W-1:0] return_pc_ex = eret_taken_ex ? (exception_epc + 1'b1) : epc;
 
@@ -141,8 +147,6 @@ module CPU_Core_5Stage #(
     ProgramCounter #(.ADDR_W(ADDR_W)) u_PC (
         .clk(clk), 
         .rst(system_rst),
-        
-        
         .halt(ID_EX_halt || (load_use_hazard && !trigger_int)),
         .next_pc(exception_taken ? exception_vector_pc : next_pc_if),
         .pc(pc_if)
@@ -167,8 +171,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
-    
     wire [OPCODE_W-1:0]   opcode_id  = IF_ID_instr[15:11];
     wire [DATA_W-1:0]     imm_id     = IF_ID_instr[7:0];
     wire [REG_ADDR_W-1:0] rd_addr_id = IF_ID_instr[10:8];
@@ -236,8 +238,6 @@ module CPU_Core_5Stage #(
             ID_EX_opcode       <= {OPCODE_W{1'b0}}; 
             ID_EX_pred_taken   <= 1'b0;
         end else if (ID_EX_halt) begin
-            
-            
             ID_EX_reg_we <= 1'b0;
             ID_EX_mem_we <= 1'b0;
             ID_EX_pc_src <= 1'b0;
@@ -269,7 +269,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
     wire [DATA_W-1:0] fwd_rd1_ex, fwd_rd2_ex, fwd_rd3_ex;
     
     ForwardingUnit #(.DATA_W(DATA_W), .REG_ADDR_W(REG_ADDR_W)) u_FWD (
@@ -301,8 +300,6 @@ module CPU_Core_5Stage #(
     wire sign_a = fwd_rd1_ex[DATA_W-1];
     wire sign_b = alu_b_in_ex[DATA_W-1];
     wire sign_res = alu_result_ex[DATA_W-1];
-    
-    
     
     wire signed_overflow = (sign_a == sign_b) && (sign_a != sign_res);
     wire [DATA_W:0] add_extended_ex = {1'b0, fwd_rd1_ex} + {1'b0, alu_b_in_ex};
@@ -359,7 +356,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
     wire [DATA_W-1:0] mem_rd_mem;
     wire [DATA_W-1:0] motor_duty_cycle_mem;
     wire [DATA_W-1:0] uart_rx_data_mem;
@@ -382,12 +378,84 @@ module CPU_Core_5Stage #(
         .status(uart_status_mem)
     );
     
+    wire i2c_write_cmd  = EX_MEM_mem_we && (EX_MEM_mem_addr == 8'hF7);
+    wire i2c_write_data = EX_MEM_mem_we && (EX_MEM_mem_addr == 8'hF8);
+    wire [7:0] i2c_data_out_mem;
+    wire [2:0] i2c_status_out_mem;
+    wire       i2c_scl_oe;
+    wire       i2c_sda_oe;
+    wire       i2c_scl_in;
+    wire       i2c_sda_in;
+
+    I2C_Peripheral #(
+        .SYS_CLK_FREQ(25_000_000),
+        .I2C_CLK_FREQ(100_000)
+    ) u_I2C (
+        .clk(clk),
+        .rst(system_rst),
+        .cmd_write(i2c_write_cmd),
+        .data_write(i2c_write_data),
+        .cmd_reg(EX_MEM_store_data[4:0]),
+        .data_in(EX_MEM_store_data),
+        .data_out(i2c_data_out_mem),
+        .status_reg(i2c_status_out_mem),
+        .scl_in(i2c_scl_in),
+        .scl_oe(i2c_scl_oe),
+        .sda_in(i2c_sda_in),
+        .sda_oe(i2c_sda_oe)
+    );
+
+    // Bidirectional I2C buffers (Tristates)
+    assign i2c_scl = i2c_scl_oe ? 1'b0 : 1'bz;
+    assign i2c_scl_in = i2c_scl;
+
+    assign i2c_sda = i2c_sda_oe ? 1'b0 : 1'bz;
+    assign i2c_sda_in = i2c_sda;
+
+    wire [DATA_W-1:0] accel_x_mem;
+    wire [DATA_W-1:0] accel_y_mem;
+
+    // -----------------------------------------------------------------------
+    // Hardware tilt-to-LED mapping with deadzone threshold to eliminate flicker
+    //  accel_x and accel_y are signed 8-bit two's-complement values from MPU-6050
+    //
+    //  Tilt FORWARD  (acc_x negative, < -TILT_THRESH) => LD3 ON (led_out[3], Pin T10 / LD7)
+    //  Tilt BACK     (acc_x positive, >  TILT_THRESH) => LD2 ON (led_out[2], Pin T9  / LD6)
+    //  Tilt RIGHT    (acc_y positive, >  TILT_THRESH) => LD1 ON (led_out[1], Pin J5  / LD5)
+    //  Tilt LEFT     (acc_y negative, < -TILT_THRESH) => LD0 ON (led_out[0], Pin H5  / LD4)
+    // -----------------------------------------------------------------------
+    localparam signed [7:0] TILT_THRESH = 8'sd8;
+
+    wire signed [7:0] s_accel_x = accel_x_mem;
+    wire signed [7:0] s_accel_y = accel_y_mem;
+
+    assign led_out[3] = (s_accel_x < -TILT_THRESH); // LD3: Tilt Forward
+    assign led_out[2] = (s_accel_x >  TILT_THRESH); // LD2: Tilt Backward
+    assign led_out[1] = (s_accel_y >  TILT_THRESH); // LD1: Tilt Right
+    assign led_out[0] = (s_accel_y < -TILT_THRESH); // LD0: Tilt Left
+
+    // -----------------------------------------------------------------------
+    // 8x8 LED Matrix Controller (2x2 dot centered at rest, moves with tilt)
+    // -----------------------------------------------------------------------
+    LED_Matrix_Controller u_LED_Matrix (
+        .clk(clk),
+        .rst(system_rst),
+        .accel_x(accel_x_mem),
+        .accel_y(accel_y_mem),
+        .matrix_rows(matrix_rows),
+        .matrix_cols(matrix_cols)
+    );
+
     DataMemory_UART #(.DATA_W(DATA_W), .ADDR_W(ADDR_W)) u_DMEM (
         .clk(clk),                               .we(EX_MEM_mem_we), 
         .addr(EX_MEM_mem_addr),                  .wd(EX_MEM_store_data),
         .digital_in(external_digital_pins),      .adc_in(external_adc_pins),
         .uart_rx_data(uart_rx_data_mem),         .uart_status(uart_status_mem),
-        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem)
+        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem),
+        .i2c_data_in(i2c_data_out_mem),
+        .i2c_status_in({{(DATA_W-3){1'b0}}, i2c_status_out_mem}),
+        .accel_x(accel_x_mem),
+        .accel_y(accel_y_mem)
     );
 
     always @(posedge clk) begin
@@ -598,8 +666,6 @@ module ForwardingUnit #(
     wire exmem_can_forward = EX_MEM_reg_we && (EX_MEM_rd_addr != {REG_ADDR_W{1'b0}}) && (EX_MEM_res_src != 2'b01);
     wire memwb_can_forward = MEM_WB_reg_we && (MEM_WB_rd_addr != {REG_ADDR_W{1'b0}});
     
-    
-    
     wire [DATA_W-1:0] EX_MEM_forward_data = (EX_MEM_res_src == 2'b10) ? EX_MEM_imm :
                                              (EX_MEM_res_src == 2'b11) ? EX_MEM_fallback_pc :
                                                                          EX_MEM_alu_result;
@@ -770,11 +836,9 @@ module InstructionMemory #(
     integer i;
 
     initial begin
-        
-        
         for (i = 0; i < (1<<ADDR_W); i = i + 1)
             memory[i] = {INSTR_W{1'b0}};
-        $readmemh("program.hex", memory);
+        $readmemh("program.hex.txt", memory);
     end
 
     assign instr = memory[pc];
@@ -826,26 +890,33 @@ module DataMemory_UART #(
     input  wire [DATA_W-1:0] adc_in,
     input  wire [DATA_W-1:0] uart_rx_data,
     input  wire [DATA_W-1:0] uart_status,
-    output reg  [DATA_W-1:0] pwm_duty_cycle
+    output reg  [DATA_W-1:0] pwm_duty_cycle,
+    input  wire [DATA_W-1:0] i2c_data_in,
+    input  wire [DATA_W-1:0] i2c_status_in,
+    output reg  [DATA_W-1:0] accel_x,      // Accelerometer X data (signed 8-bit from MPU6050)
+    output reg  [DATA_W-1:0] accel_y       // Accelerometer Y data (signed 8-bit from MPU6050)
 );
     reg [DATA_W-1:0] memory [0:(1<<ADDR_W)-1];
     integer i;
 
     initial begin
         pwm_duty_cycle = {DATA_W{1'b0}};
-        
+        accel_x = 8'h00;
+        accel_y = 8'h00;
         
         for (i = 0; i < (1<<ADDR_W); i = i + 1)
             memory[i] = {DATA_W{1'b0}};
     end
 
-    
-    
     assign rd = (addr == 8'hFF) ? pwm_duty_cycle : 
                 (addr == 8'hFE) ? digital_in : 
                 (addr == 8'hFD) ? adc_in :
                 (addr == 8'hFA) ? uart_status :
                 (addr == 8'hFB) ? uart_rx_data :
+                (addr == 8'hF8) ? i2c_data_in :  // NEW
+                (addr == 8'hF7) ? i2c_status_in :// NEW
+                (addr == 8'hF4) ? accel_x :      // NEW
+                (addr == 8'hF3) ? accel_y :      // NEW
                 memory[addr];
 
     always @(posedge clk) begin
@@ -854,8 +925,18 @@ module DataMemory_UART #(
                 pwm_duty_cycle <= wd;
                 memory[addr] <= wd;
             end
+            else if (addr == 8'hF4) begin  // accel_x written by CPU I2C program
+                accel_x <= wd;
+                memory[addr] <= wd;
+            end
+            else if (addr == 8'hF3) begin  // accel_y written by CPU I2C program
+                accel_y <= wd;
+                memory[addr] <= wd;
+            end
             else if (addr != 8'hFE && addr != 8'hFD && addr != 8'hFA &&
-                     addr != 8'hFB && addr != 8'hFC) memory[addr] <= wd; 
+                     addr != 8'hFB && addr != 8'hFC &&
+                     addr != 8'hF8 && addr != 8'hF7 && addr != 8'hF4 &&
+                     addr != 8'hF3) memory[addr] <= wd; 
         end
     end
 endmodule
@@ -909,7 +990,6 @@ module ResetSynchronizer (
         end
     end
 endmodule
-
 
 module UART_Peripheral #(
     parameter integer CLK_FREQ_HZ = 50_000_000,
@@ -1089,3 +1169,554 @@ module UART_Receiver #(
         end
     end
 endmodule
+
+`timescale 1ns / 1ps
+`default_nettype none
+
+module I2C_Peripheral #(
+    parameter integer SYS_CLK_FREQ = 25_000_000,
+    parameter integer I2C_CLK_FREQ = 100_000
+) (
+    input  wire       clk,
+    input  wire       rst,
+    
+    // Processor register interface
+    input  wire       cmd_write,      // Write pulse to 0xF7
+    input  wire       data_write,     // Write pulse to 0xF8
+    input  wire [4:0] cmd_reg,        // [4]:ACK, [3]:READ, [2]:WRITE, [1]:STOP, [0]:START
+    input  wire [7:0] data_in,        // CPU write data bus
+    output reg  [7:0] data_out,       // CPU read data bus
+    output wire [2:0] status_reg,     // [2]:ERROR, [1]:RX_ACK, [0]:BUSY
+    
+    // Unidirectional I2C physical lines (to be connected to tristates at top level)
+    input  wire       scl_in,
+    output reg        scl_oe,         // 1 = pull SCL low, 0 = float SCL high
+    input  wire       sda_in,
+    output reg        sda_oe          // 1 = pull SDA low, 0 = float SDA high
+);
+
+    // Timing parameters: Tick runs at 4x the SCL frequency (400 kHz for 100 kHz SCL)
+    localparam integer TICK_DIVIDER = SYS_CLK_FREQ / (I2C_CLK_FREQ * 4);
+    
+    reg [$clog2(TICK_DIVIDER)-1:0] clk_divider;
+    reg i2c_tick;
+    
+    // Clock stretching detection:
+    // If we want SCL high (scl_oe = 0) but the slave is holding SCL low (scl_in = 0), we stall the divider.
+    wire scl_stall = 1'b0; // Clock stretching disabled for hardware robustness (prevents hangs)
+    
+    always @(posedge clk) begin
+        if (rst) begin
+            clk_divider <= 0;
+            i2c_tick <= 1'b0;
+        end else begin
+            i2c_tick <= 1'b0;
+            if (!scl_stall) begin
+                if (clk_divider == TICK_DIVIDER - 1) begin
+                    clk_divider <= 0;
+                    i2c_tick <= 1'b1;
+                end else begin
+                    clk_divider <= clk_divider + 1'b1;
+                end
+            end
+        end
+    end
+
+    // FSM States
+    localparam STATE_IDLE        = 4'd0;
+    localparam STATE_START_0     = 4'd1;
+    localparam STATE_START_1     = 4'd2;
+    localparam STATE_SHIFT_TX    = 4'd3;
+    localparam STATE_ACK_TX      = 4'd4;
+    localparam STATE_SHIFT_RX    = 4'd5;
+    localparam STATE_ACK_RX      = 4'd6;
+    localparam STATE_STOP_0      = 4'd7;
+    localparam STATE_STOP_1      = 4'd8;
+    localparam STATE_STOP_2      = 4'd9;
+
+    reg [3:0] state;
+    reg [1:0] substate; // Quarter-cycles of a bit (0 to 3)
+    reg [2:0] bit_counter;
+    
+    reg [7:0] i2c_data_reg; // Holds the byte to transmit (written to 0xF8)
+    reg [7:0] tx_shift_reg;
+    reg [7:0] rx_shift_reg;
+    
+    reg active_start;
+    reg active_stop;
+    reg active_write;
+    reg active_read;
+    reg active_ack;
+    
+    reg busy;
+    reg rx_ack_bit;
+    reg error;
+    
+    assign status_reg = {error, rx_ack_bit, busy};
+
+    always @(posedge clk) begin
+        if (rst) begin
+            state        <= STATE_IDLE;
+            substate     <= 0;
+            bit_counter  <= 0;
+            scl_oe       <= 1'b0;
+            sda_oe       <= 1'b0;
+            busy         <= 1'b0;
+            rx_ack_bit   <= 1'b0;
+            error        <= 1'b0;
+            data_out     <= 8'b0;
+            i2c_data_reg <= 8'b0;
+            tx_shift_reg <= 8'b0;
+            rx_shift_reg <= 8'b0;
+            active_start <= 1'b0;
+            active_stop  <= 1'b0;
+            active_write <= 1'b0;
+            active_read  <= 1'b0;
+            active_ack   <= 1'b0;
+        end else begin
+            // Latched instantly when writing to data register (0xF8)
+            if (data_write) begin
+                i2c_data_reg <= data_in;
+            end
+
+            // Register writes to command register (0xF7) (latched when not busy)
+            if (cmd_write && !busy) begin
+                active_start <= cmd_reg[0];
+                active_stop  <= cmd_reg[1];
+                active_write <= cmd_reg[2];
+                active_read  <= cmd_reg[3];
+                active_ack   <= cmd_reg[4];
+                tx_shift_reg <= i2c_data_reg; // Load shift register from data register
+                busy         <= 1'b1;
+                error        <= 1'b0;
+                
+                // Jump immediately into transaction execution
+                if (cmd_reg[0]) begin
+                    state <= STATE_START_0;
+                end else if (cmd_reg[2]) begin
+                    state <= STATE_SHIFT_TX;
+                    bit_counter <= 3'd7;
+                end else if (cmd_reg[3]) begin
+                    state <= STATE_SHIFT_RX;
+                    bit_counter <= 3'd7;
+                end else if (cmd_reg[1]) begin
+                    state <= STATE_STOP_0;
+                end else begin
+                    busy <= 1'b0; // No valid command bit
+                end
+                substate <= 0;
+            end
+            
+            // FSM Execution at 4x ticks
+            else if (busy && i2c_tick) begin
+                case (state)
+                    // --- START CONDITION ---
+                    STATE_START_0: begin
+                        // Phase 0: Make sure SDA is released (1) and SCL is released (1)
+                        sda_oe <= 1'b0;
+                        scl_oe <= 1'b0;
+                        state  <= STATE_START_1;
+                    end
+                    STATE_START_1: begin
+                        if (substate == 0) begin
+                            sda_oe <= 1'b1; // SDA goes low while SCL is high
+                        end else if (substate == 2) begin
+                            scl_oe <= 1'b1; // SCL goes low (holds the bus)
+                        end
+                        
+                        if (substate == 3) begin
+                            substate <= 0;
+                            active_start <= 1'b0;
+                            
+                            // Check next action after START
+                            if (active_write) begin
+                                state <= STATE_SHIFT_TX;
+                                bit_counter <= 3'd7;
+                            end else if (active_read) begin
+                                state <= STATE_SHIFT_RX;
+                                bit_counter <= 3'd7;
+                            end else if (active_stop) begin
+                                state <= STATE_STOP_0;
+                            end else begin
+                                busy  <= 1'b0;
+                                state <= STATE_IDLE;
+                            end
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    // --- WRITE BYTE ---
+                    STATE_SHIFT_TX: begin
+                        if (substate == 0) begin
+                            scl_oe <= 1'b1; // SCL low
+                            sda_oe <= ~tx_shift_reg[bit_counter]; // Set SDA out
+                        end else if (substate == 1) begin
+                            scl_oe <= 1'b0; // SCL high (float)
+                        end
+                        
+                        if (substate == 3) begin
+                            substate <= 0;
+                            if (bit_counter == 0) begin
+                                state <= STATE_ACK_TX;
+                            end else begin
+                                bit_counter <= bit_counter - 1'b1;
+                            end
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    // --- GET ACK FROM SLAVE ---
+                    STATE_ACK_TX: begin
+                        if (substate == 0) begin
+                            scl_oe <= 1'b1; // SCL low
+                            sda_oe <= 1'b0; // Float SDA (receive mode)
+                        end else if (substate == 1) begin
+                            scl_oe <= 1'b0; // SCL high
+                        end else if (substate == 2) begin
+                            rx_ack_bit <= sda_in; // Sample ACK (0 = ACK, 1 = NACK)
+                        end
+                        
+                        if (substate == 3) begin
+                            scl_oe <= 1'b1; // Pull SCL low to complete the 9th clock cycle!
+                            substate <= 0;
+                            active_write <= 1'b0;
+                            
+                            if (active_stop) begin
+                                state <= STATE_STOP_0;
+                            end else begin
+                                busy  <= 1'b0;
+                                state <= STATE_IDLE;
+                            end
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    // --- READ BYTE ---
+                    STATE_SHIFT_RX: begin
+                        if (substate == 0) begin
+                            scl_oe <= 1'b1; // SCL low
+                            sda_oe <= 1'b0; // Release SDA
+                        end else if (substate == 1) begin
+                            scl_oe <= 1'b0; // SCL high
+                        end else if (substate == 2) begin
+                            rx_shift_reg[bit_counter] <= sda_in; // Sample SDA
+                        end
+                        
+                        if (substate == 3) begin
+                            substate <= 0;
+                            if (bit_counter == 0) begin
+                                state <= STATE_ACK_RX;
+                            end else begin
+                                bit_counter <= bit_counter - 1'b1;
+                            end
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    // --- SEND ACK TO SLAVE ---
+                    STATE_ACK_RX: begin
+                        if (substate == 0) begin
+                            scl_oe <= 1'b1; // SCL low
+                            sda_oe <= active_ack; // Send ACK/NACK (0 = ACK, 1 = NACK)
+                        end else if (substate == 1) begin
+                            scl_oe <= 1'b0; // SCL high
+                        end
+                        
+                        if (substate == 3) begin
+                            scl_oe <= 1'b1; // Pull SCL low to complete the 9th clock cycle!
+                            substate <= 0;
+                            active_read <= 1'b0;
+                            data_out <= rx_shift_reg; // Save result register
+                            
+                            if (active_stop) begin
+                                state <= STATE_STOP_0;
+                            end else begin
+                                busy  <= 1'b0;
+                                state <= STATE_IDLE;
+                            end
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    // --- STOP CONDITION ---
+                    STATE_STOP_0: begin
+                        // Phase 0: Pull SDA low while SCL is low
+                        scl_oe <= 1'b1;
+                        sda_oe <= 1'b1;
+                        state  <= STATE_STOP_1;
+                    end
+                    STATE_STOP_1: begin
+                        if (substate == 0) begin
+                            scl_oe <= 1'b0; // Release SCL (goes high)
+                        end else if (substate == 2) begin
+                            sda_oe <= 1'b0; // Release SDA (goes high while SCL is high)
+                        end
+                        
+                        if (substate == 3) begin
+                            substate <= 0;
+                            active_stop <= 1'b0;
+                            busy  <= 1'b0;
+                            state <= STATE_IDLE;
+                        end else begin
+                            substate <= substate + 1'b1;
+                        end
+                    end
+                    
+                    default: state <= STATE_IDLE;
+                endcase
+            end
+        end
+    end
+
+endmodule
+
+`timescale 1ns / 1ps
+`default_nettype none
+
+// ===========================================================================
+// 8x8 LED Matrix Controller (Ultra-Smooth 2x2 Dot Spirit Level)
+// Features:
+//   1. 2-Stage Cascaded Q8.8 Fixed-Point EMA Filter -> Silky analog motion
+//   2. Amplitude Hysteresis (Schmitt Trigger) -> Zero boundary flickering
+//   3. Temporal Debounce Filter (16 ms) -> Eliminates transient hand jitter
+//   4. Optimized Sensitivity -> Reaches all 4 outer edges comfortably at ~20Â°â€“25Â°
+//   5. Drive Polarity -> Column Anodes (Active HIGH), Row Cathodes (Active LOW)
+// ===========================================================================
+module LED_Matrix_Controller (
+    input  wire       clk,          // 25 MHz system clock
+    input  wire       rst,          // Synchronous active-high reset
+    
+    // Accelerometer values from CPU/I2C (signed 8-bit from MPU6050)
+    input  wire [7:0] accel_x,
+    input  wire [7:0] accel_y,
+    
+    // Physical matrix pins
+    // matrix_rows: PMOD JC (Row 0 = Top, Row 7 = Bottom) -> Cathodes (Active LOW = 0)
+    // matrix_cols: PMOD JD (Col 0 = Left, Col 7 = Right) -> Anodes (Active HIGH = 1)
+    output reg  [7:0] matrix_rows,
+    output reg  [7:0] matrix_cols
+);
+
+    // -----------------------------------------------------------------------
+    // 1. Column Scanning Multiplexer: 1 kHz scan rate (125 Hz frame rate)
+    // -----------------------------------------------------------------------
+    localparam integer SCAN_TICKS = 25000; // 25,000 cycles @ 25 MHz = 1 ms/column
+    
+    reg [15:0] scan_counter;
+    reg [2:0]  active_col;
+    reg        tick_1ms;
+    
+    always @(posedge clk) begin
+        if (rst) begin
+            scan_counter <= 16'd0;
+            active_col   <= 3'd0;
+            tick_1ms     <= 1'b0;
+        end else begin
+            tick_1ms <= 1'b0;
+            if (scan_counter >= SCAN_TICKS - 1) begin
+                scan_counter <= 16'd0;
+                active_col   <= active_col + 3'd1;
+                tick_1ms     <= 1'b1;
+            end else begin
+                scan_counter <= scan_counter + 16'd1;
+            end
+        end
+    end
+
+    // -----------------------------------------------------------------------
+    // 2. Cascaded 2-Stage Q8.8 Fixed-Point EMA Low-Pass Filter
+    // -----------------------------------------------------------------------
+    // Stage 1 (128-sample EMA): Eliminates high-frequency noise & quantization steps
+    // Stage 2 (32-sample EMA): Smooths velocity & provides 2nd-order response
+    wire signed [15:0] x_in = { {8{accel_x[7]}}, accel_x, 8'd0 };
+    wire signed [15:0] y_in = { {8{accel_y[7]}}, accel_y, 8'd0 };
+
+    reg signed [15:0] stage1_x, stage1_y;
+    reg signed [15:0] stage2_x, stage2_y;
+    
+    always @(posedge clk) begin
+        if (rst) begin
+            stage1_x <= 16'sd0;
+            stage1_y <= 16'sd0;
+            stage2_x <= 16'sd0;
+            stage2_y <= 16'sd0;
+        end else if (tick_1ms) begin
+            // Stage 1: alpha = 1/128
+            stage1_x <= stage1_x + ((x_in - stage1_x) >>> 7);
+            stage1_y <= stage1_y + ((y_in - stage1_y) >>> 7);
+            
+            // Stage 2: alpha = 1/32
+            stage2_x <= stage2_x + ((stage1_x - stage2_x) >>> 5);
+            stage2_y <= stage2_y + ((stage1_y - stage2_y) >>> 5);
+        end
+    end
+
+    // Extract ultra-smoothed 8-bit signed acceleration
+    wire signed [7:0] ax = stage2_x[15:8];
+    wire signed [7:0] ay = stage2_y[15:8];
+
+    // -----------------------------------------------------------------------
+    // 3. Amplitude Hysteresis (Schmitt Trigger Target State Machine)
+    // -----------------------------------------------------------------------
+    // Deadzone: [-7, +7] -> Completely locked at center when resting
+    // Step 1: Threshold = Â±7 LSB (Release back to center = Â±4 LSB)
+    // Step 2: Threshold = Â±13 LSB (Release = Â±10 LSB)
+    // Step 3 (Edge): Threshold = Â±19 LSB (Release = Â±16 LSB) -> Reaches border rows/cols!
+    // -----------------------------------------------------------------------
+    reg [2:0] target_r0;
+    reg [2:0] target_c0;
+
+    // Row (X-axis: Forward / Backward)
+    always @(posedge clk) begin
+        if (rst) begin
+            target_r0 <= 3'd3; // Center
+        end else if (tick_1ms) begin
+            case (target_r0)
+                3'd3: begin // Center (Rows 3, 4)
+                    if (ax < -8'sd7)       target_r0 <= 3'd2; // Forward tilt
+                    else if (ax > 8'sd7)   target_r0 <= 3'd4; // Backward tilt
+                end
+                3'd2: begin // Forward Step 1 (Rows 2, 3)
+                    if (ax < -8'sd13)      target_r0 <= 3'd1;
+                    else if (ax > -8'sd4)  target_r0 <= 3'd3; // Return to center
+                end
+                3'd1: begin // Forward Step 2 (Rows 1, 2)
+                    if (ax < -8'sd19)      target_r0 <= 3'd0; // Reaches TOP edge!
+                    else if (ax > -8'sd10) target_r0 <= 3'd2;
+                end
+                3'd0: begin // TOP EDGE (Rows 0, 1)
+                    if (ax > -8'sd16)      target_r0 <= 3'd1;
+                end
+                3'd4: begin // Backward Step 1 (Rows 4, 5)
+                    if (ax > 8'sd13)       target_r0 <= 3'd5;
+                    else if (ax < 8'sd4)   target_r0 <= 3'd3; // Return to center
+                end
+                3'd5: begin // Backward Step 2 (Rows 5, 6)
+                    if (ax > 8'sd19)       target_r0 <= 3'd6; // Reaches BOTTOM edge!
+                    else if (ax < 8'sd10)  target_r0 <= 3'd4;
+                end
+                3'd6: begin // BOTTOM EDGE (Rows 6, 7)
+                    if (ax < 8'sd16)       target_r0 <= 3'd5;
+                end
+                default: target_r0 <= 3'd3;
+            endcase
+        end
+    end
+
+    // Column (Y-axis: Left / Right)
+    always @(posedge clk) begin
+        if (rst) begin
+            target_c0 <= 3'd3; // Center
+        end else if (tick_1ms) begin
+            case (target_c0)
+                3'd3: begin // Center (Cols 3, 4)
+                    if (ay < -8'sd7)       target_c0 <= 3'd2; // Left tilt
+                    else if (ay > 8'sd7)   target_c0 <= 3'd4; // Right tilt
+                end
+                3'd2: begin // Left Step 1 (Cols 2, 3)
+                    if (ay < -8'sd13)      target_c0 <= 3'd1;
+                    else if (ay > -8'sd4)  target_c0 <= 3'd3; // Return to center
+                end
+                3'd1: begin // Left Step 2 (Cols 1, 2)
+                    if (ay < -8'sd19)      target_c0 <= 3'd0; // Reaches LEFT edge!
+                    else if (ay > -8'sd10) target_c0 <= 3'd2;
+                end
+                3'd0: begin // LEFT EDGE (Cols 0, 1)
+                    if (ay > -8'sd16)      target_c0 <= 3'd1;
+                end
+                3'd4: begin // Right Step 1 (Cols 4, 5)
+                    if (ay > 8'sd13)       target_c0 <= 3'd5;
+                    else if (ay < 8'sd4)   target_c0 <= 3'd3; // Return to center
+                end
+                3'd5: begin // Right Step 2 (Cols 5, 6)
+                    if (ay > 8'sd19)       target_c0 <= 3'd6; // Reaches RIGHT edge!
+                    else if (ay < 8'sd10)  target_c0 <= 3'd4;
+                end
+                3'd6: begin // RIGHT EDGE (Cols 6, 7)
+                    if (ay < 8'sd16)       target_c0 <= 3'd5;
+                end
+                default: target_c0 <= 3'd3;
+            endcase
+        end
+    end
+
+    // -----------------------------------------------------------------------
+    // 4. Temporal Debounce Filter (16 ms Stability Verification)
+    // -----------------------------------------------------------------------
+    // Position change must be stable for 16 consecutive ms (2 full matrix frames)
+    // before updating the output display, completely filtering out hand tremor
+    reg [2:0] r0, c0;
+    reg [2:0] prev_target_r, prev_target_c;
+    reg [4:0] stable_cnt_r, stable_cnt_c;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            r0            <= 3'd3;
+            c0            <= 3'd3;
+            prev_target_r <= 3'd3;
+            prev_target_c <= 3'd3;
+            stable_cnt_r  <= 5'd0;
+            stable_cnt_c  <= 5'd0;
+        end else if (tick_1ms) begin
+            // Row temporal debounce (16 ms)
+            if (target_r0 == r0) begin
+                stable_cnt_r  <= 5'd0;
+                prev_target_r <= target_r0;
+            end else if (target_r0 == prev_target_r) begin
+                if (stable_cnt_r >= 5'd15) begin
+                    r0           <= target_r0;
+                    stable_cnt_r <= 5'd0;
+                end else begin
+                    stable_cnt_r <= stable_cnt_r + 5'd1;
+                end
+            end else begin
+                prev_target_r <= target_r0;
+                stable_cnt_r  <= 5'd0;
+            end
+
+            // Column temporal debounce (16 ms)
+            if (target_c0 == c0) begin
+                stable_cnt_c  <= 5'd0;
+                prev_target_c <= target_c0;
+            end else if (target_c0 == prev_target_c) begin
+                if (stable_cnt_c >= 5'd15) begin
+                    c0           <= target_c0;
+                    stable_cnt_c <= 5'd0;
+                end else begin
+                    stable_cnt_c <= stable_cnt_c + 5'd1;
+                end
+            end else begin
+                prev_target_c <= target_c0;
+                stable_cnt_c  <= 5'd0;
+            end
+        end
+    end
+
+    // -----------------------------------------------------------------------
+    // 5. Glitch-Free Registered Matrix Output Drive
+    // -----------------------------------------------------------------------
+    always @(posedge clk) begin
+        if (rst) begin
+            matrix_cols <= 8'h00;
+            matrix_rows <= 8'hFF;
+        end else begin
+            // Anodes (Columns): Active HIGH (only active column is 1, rest 0)
+            matrix_cols <= 8'h00;
+            matrix_cols[active_col] <= 1'b1;
+
+            // Cathodes (Rows): Active LOW (selected rows 0, inactive rows 1)
+            matrix_rows <= 8'hFF;
+            if (active_col == c0 || active_col == (c0 + 3'd1)) begin
+                matrix_rows[r0]        <= 1'b0;
+                matrix_rows[r0 + 3'd1] <= 1'b0;
+            end
+        end
+    end
+
+endmodule
+

@@ -48,9 +48,7 @@ module UART_Receiver #(
                 RX_START: if (baud_count == HALF_BIT - 1) begin
                     baud_count <= {COUNTER_W{1'b0}};
                     if (!rx_sync) begin
-                        bit_index <= 3'd0;
-                        
-                        
+                        bit_index <= 3'd0;         
                         baud_count <= HALF_BIT;
                         state <= RX_DATA;
                     end else state <= RX_IDLE;
@@ -76,4 +74,3 @@ module UART_Receiver #(
         end
     end
 endmodule
-

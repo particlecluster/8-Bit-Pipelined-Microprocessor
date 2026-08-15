@@ -39,27 +39,42 @@ module CPU_Core_5Stage #(
     parameter integer OPCODE_W   = 5,
     parameter integer REG_ADDR_W = 3,
     parameter integer IMM5_W     = 5,
-    parameter integer CLK_FREQ_HZ = 50_000_000,
+    parameter integer CLK_FREQ_HZ = 25_000_000,   // UPDATED: Must match your new 25 MHz clock!
     parameter integer BAUD_RATE   = 115_200
 ) (
-    input  wire              clk,
-    input  wire              rst,
-    input  wire              interrupt_pin,
-    input  wire [DATA_W-1:0] external_digital_pins,
-    input  wire [DATA_W-1:0] external_adc_pins,
-    output wire              motor_pwm_pin,
-    input  wire              uart_rx,
-    output wire              uart_tx
+    input  wire              clk_100mhz,          // 100 MHz onboard clock
+    input  wire              rst,                 // Reset button
+    output wire [3:0]        led_out,             // LD3..LD0 onboard green LEDs
+    inout  wire              i2c_sda,             // MPU-6050 I2C SDA
+    inout  wire              i2c_scl,             // MPU-6050 I2C SCL
+    output wire [7:0]        matrix_rows,         // PMOD JC (Row 0..7, Anodes)
+    output wire [7:0]        matrix_cols          // PMOD JD (Col 0..7, Cathodes)
 );
 
-    wire system_rst;
+    // Unused ports tied off
+    wire              interrupt_pin = 1'b0;
+    wire [DATA_W-1:0] external_digital_pins = 8'b0;
+    wire [DATA_W-1:0] external_adc_pins = 8'b0;
+    wire              motor_pwm_pin;
+    wire              uart_rx = 1'b1;
+    wire              uart_tx;
 
+    // --- NEW CLOCKING LOGIC ---
+    wire clk; // This is the new, safe 25MHz clock that runs your CPU
+
+    clk_wiz_0 u_clock_divider (
+        .clk_in1(clk_100mhz),
+        .clk_out1(clk)
+    );
+    // --------------------------
+
+    wire system_rst;
+    
     reg [INSTR_W-1:0] IF_ID_instr;
     reg [ADDR_W-1:0]  IF_ID_pc;
     reg               IF_ID_pred_taken;
     reg [ADDR_W-1:0]  IF_ID_fallback_pc;
 
-    
     reg [ADDR_W-1:0]     ID_EX_pc;
     reg [DATA_W-1:0]     ID_EX_rd1, ID_EX_rd2, ID_EX_rd3;
     reg [DATA_W-1:0]     ID_EX_imm, ID_EX_imm5_sext, ID_EX_imm5_zext;
@@ -71,21 +86,18 @@ module CPU_Core_5Stage #(
     reg                  ID_EX_pred_taken;
     reg [ADDR_W-1:0]     ID_EX_fallback_pc;
 
-    
     reg [DATA_W-1:0]     EX_MEM_alu_result, EX_MEM_mem_addr, EX_MEM_store_data, EX_MEM_imm;
     reg [ADDR_W-1:0]     EX_MEM_fallback_pc; 
     reg [REG_ADDR_W-1:0] EX_MEM_rd_addr;
     reg                  EX_MEM_reg_we, EX_MEM_mem_we;
     reg [1:0]            EX_MEM_res_src;
 
-    
     reg [DATA_W-1:0]     MEM_WB_alu_result, MEM_WB_mem_data, MEM_WB_imm;
     reg [ADDR_W-1:0]     MEM_WB_fallback_pc; 
     reg [REG_ADDR_W-1:0] MEM_WB_rd_addr;
     reg                  MEM_WB_reg_we;
     reg [1:0]            MEM_WB_res_src;
 
-    
     wire [DATA_W-1:0] MEM_WB_reg_write_data =
         (MEM_WB_res_src == 2'b00) ? MEM_WB_alu_result :
         (MEM_WB_res_src == 2'b01) ? MEM_WB_mem_data   :
@@ -93,16 +105,14 @@ module CPU_Core_5Stage #(
 
     ResetSynchronizer u_RstSync (
         .clk(clk), 
-        .async_rst_in(rst), 
+        .async_rst_in(!rst), 
         .sync_rst_out(system_rst)
     );
 
-    
     wire [ADDR_W-1:0]  pc_if, next_pc_if;
     wire [INSTR_W-1:0] instr_if;
     wire               predict_taken_if, trigger_int;
     wire [ADDR_W-1:0]  epc;
-    
     
     wire reti_taken_ex = (ID_EX_opcode == `OP_RETI);
     wire eret_taken_ex = (ID_EX_opcode == `OP_ERET) && in_exception;
@@ -115,8 +125,6 @@ module CPU_Core_5Stage #(
     wire [ADDR_W-1:0] exception_epc;
     wire [1:0]        exception_cause;
     wire              in_exception;
-    
-    
     
     wire [ADDR_W-1:0] return_pc_ex = eret_taken_ex ? (exception_epc + 1'b1) : epc;
 
@@ -141,8 +149,6 @@ module CPU_Core_5Stage #(
     ProgramCounter #(.ADDR_W(ADDR_W)) u_PC (
         .clk(clk), 
         .rst(system_rst),
-        
-        
         .halt(ID_EX_halt || (load_use_hazard && !trigger_int)),
         .next_pc(exception_taken ? exception_vector_pc : next_pc_if),
         .pc(pc_if)
@@ -167,8 +173,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
-    
     wire [OPCODE_W-1:0]   opcode_id  = IF_ID_instr[15:11];
     wire [DATA_W-1:0]     imm_id     = IF_ID_instr[7:0];
     wire [REG_ADDR_W-1:0] rd_addr_id = IF_ID_instr[10:8];
@@ -236,8 +240,6 @@ module CPU_Core_5Stage #(
             ID_EX_opcode       <= {OPCODE_W{1'b0}}; 
             ID_EX_pred_taken   <= 1'b0;
         end else if (ID_EX_halt) begin
-            
-            
             ID_EX_reg_we <= 1'b0;
             ID_EX_mem_we <= 1'b0;
             ID_EX_pc_src <= 1'b0;
@@ -269,7 +271,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
     wire [DATA_W-1:0] fwd_rd1_ex, fwd_rd2_ex, fwd_rd3_ex;
     
     ForwardingUnit #(.DATA_W(DATA_W), .REG_ADDR_W(REG_ADDR_W)) u_FWD (
@@ -301,8 +302,6 @@ module CPU_Core_5Stage #(
     wire sign_a = fwd_rd1_ex[DATA_W-1];
     wire sign_b = alu_b_in_ex[DATA_W-1];
     wire sign_res = alu_result_ex[DATA_W-1];
-    
-    
     
     wire signed_overflow = (sign_a == sign_b) && (sign_a != sign_res);
     wire [DATA_W:0] add_extended_ex = {1'b0, fwd_rd1_ex} + {1'b0, alu_b_in_ex};
@@ -359,7 +358,6 @@ module CPU_Core_5Stage #(
         end
     end
 
-    
     wire [DATA_W-1:0] mem_rd_mem;
     wire [DATA_W-1:0] motor_duty_cycle_mem;
     wire [DATA_W-1:0] uart_rx_data_mem;
@@ -382,12 +380,84 @@ module CPU_Core_5Stage #(
         .status(uart_status_mem)
     );
     
+    wire i2c_write_cmd  = EX_MEM_mem_we && (EX_MEM_mem_addr == 8'hF7);
+    wire i2c_write_data = EX_MEM_mem_we && (EX_MEM_mem_addr == 8'hF8);
+    wire [7:0] i2c_data_out_mem;
+    wire [2:0] i2c_status_out_mem;
+    wire       i2c_scl_oe;
+    wire       i2c_sda_oe;
+    wire       i2c_scl_in;
+    wire       i2c_sda_in;
+
+    I2C_Peripheral #(
+        .SYS_CLK_FREQ(25_000_000),
+        .I2C_CLK_FREQ(100_000)
+    ) u_I2C (
+        .clk(clk),
+        .rst(system_rst),
+        .cmd_write(i2c_write_cmd),
+        .data_write(i2c_write_data),
+        .cmd_reg(EX_MEM_store_data[4:0]),
+        .data_in(EX_MEM_store_data),
+        .data_out(i2c_data_out_mem),
+        .status_reg(i2c_status_out_mem),
+        .scl_in(i2c_scl_in),
+        .scl_oe(i2c_scl_oe),
+        .sda_in(i2c_sda_in),
+        .sda_oe(i2c_sda_oe)
+    );
+
+    // Bidirectional I2C buffers (Tristates)
+    assign i2c_scl = i2c_scl_oe ? 1'b0 : 1'bz;
+    assign i2c_scl_in = i2c_scl;
+
+    assign i2c_sda = i2c_sda_oe ? 1'b0 : 1'bz;
+    assign i2c_sda_in = i2c_sda;
+
+    wire [DATA_W-1:0] accel_x_mem;
+    wire [DATA_W-1:0] accel_y_mem;
+
+    // -----------------------------------------------------------------------
+    // Hardware tilt-to-LED mapping with deadzone threshold to eliminate flicker
+    //  accel_x and accel_y are signed 8-bit two's-complement values from MPU-6050
+    //
+    //  Tilt FORWARD  (acc_x negative, < -TILT_THRESH) => LD3 ON (led_out[3], Pin T10 / LD7)
+    //  Tilt BACK     (acc_x positive, >  TILT_THRESH) => LD2 ON (led_out[2], Pin T9  / LD6)
+    //  Tilt RIGHT    (acc_y positive, >  TILT_THRESH) => LD1 ON (led_out[1], Pin J5  / LD5)
+    //  Tilt LEFT     (acc_y negative, < -TILT_THRESH) => LD0 ON (led_out[0], Pin H5  / LD4)
+    // -----------------------------------------------------------------------
+    localparam signed [7:0] TILT_THRESH = 8'sd8;
+
+    wire signed [7:0] s_accel_x = accel_x_mem;
+    wire signed [7:0] s_accel_y = accel_y_mem;
+
+    assign led_out[3] = (s_accel_x < -TILT_THRESH); // LD3: Tilt Forward
+    assign led_out[2] = (s_accel_x >  TILT_THRESH); // LD2: Tilt Backward
+    assign led_out[1] = (s_accel_y >  TILT_THRESH); // LD1: Tilt Right
+    assign led_out[0] = (s_accel_y < -TILT_THRESH); // LD0: Tilt Left
+
+    // -----------------------------------------------------------------------
+    // 8x8 LED Matrix Controller (2x2 dot centered at rest, moves with tilt)
+    // -----------------------------------------------------------------------
+    LED_Matrix_Controller u_LED_Matrix (
+        .clk(clk),
+        .rst(system_rst),
+        .accel_x(accel_x_mem),
+        .accel_y(accel_y_mem),
+        .matrix_rows(matrix_rows),
+        .matrix_cols(matrix_cols)
+    );
+
     DataMemory_UART #(.DATA_W(DATA_W), .ADDR_W(ADDR_W)) u_DMEM (
         .clk(clk),                               .we(EX_MEM_mem_we), 
         .addr(EX_MEM_mem_addr),                  .wd(EX_MEM_store_data),
         .digital_in(external_digital_pins),      .adc_in(external_adc_pins),
         .uart_rx_data(uart_rx_data_mem),         .uart_status(uart_status_mem),
-        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem)
+        .rd(mem_rd_mem),                         .pwm_duty_cycle(motor_duty_cycle_mem),
+        .i2c_data_in(i2c_data_out_mem),
+        .i2c_status_in({{(DATA_W-3){1'b0}}, i2c_status_out_mem}),
+        .accel_x(accel_x_mem),
+        .accel_y(accel_y_mem)
     );
 
     always @(posedge clk) begin
