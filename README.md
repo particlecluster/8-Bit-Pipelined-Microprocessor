@@ -2,9 +2,9 @@
 
 **Team Voltere | IIT Indore | IITISoC 2026**
 
-A synthesizable System-on-Chip (SoC) built entirely in Verilog, featuring a custom 5-stage pipelined 8-bit RISC microprocessor that communicates with an MPU-6050 IMU sensor over I2C and drives an 8×8 LED matrix display with real-time fluid physics rendering.
+A synthesizable System-on-Chip (SoC) built entirely in Verilog, featuring a custom 5-stage pipelined 8-bit RISC microprocessor that communicates with an MPU-6050 IMU sensor over I2C and drives an 8×8 LED matrix display with real-time tilt-controlled rendering.
 
-The microprocessor initializes and continuously polls the IMU sensor, routing signed acceleration data through the CPU's memory-mapped I/O bus to a dedicated hardware LED Matrix Controller — which applies multi-stage digital signal processing filters and renders a **3×3 viscous water droplet** that physically flows in response to board tilt, simulating liquid gravity with momentum, viscous drag, fluid elongation, and wall-impact splashing.
+The microprocessor initializes and continuously polls the IMU sensor over I²C, routing signed 8-bit acceleration data through the CPU's memory-mapped I/O bus to a dedicated hardware LED Matrix Controller. The controller applies a cascaded 2-stage digital low-pass filter, Schmitt-trigger amplitude hysteresis, and a 16 ms temporal debounce filter to render a **smooth 2×2 dot** that glides across the 8×8 LED matrix in direct response to board tilt — functioning as a precision digital spirit level. The dot visually resembles a liquid droplet rolling on glass due to the ultra-smooth analog-like motion produced by the DSP filter pipeline.
 
 ---
 
@@ -99,11 +99,15 @@ The data stored at `0xF4` and `0xF3` is then continuously read by the hardware `
 
 ---
 
-## 🌊 LED Matrix Controller — 3×3 Viscous Water Droplet Physics
+## 💧 LED Matrix Controller — 2×2 Spirit Level Dot
 
-The [`src/led_matrix_controller.v`](src/led_matrix_controller.v) module implements a **real-time fluid physics engine** for the 1588BS 8×8 LED matrix. It renders a **3×3 viscous water droplet** (9 lit pixels) that dynamically responds to physical board tilt from the IMU.
+The [`src/led_matrix_controller.v`](src/led_matrix_controller.v) module drives the 1588BS 8×8 LED matrix, rendering a **2×2 dot** (4 lit pixels) that tracks physical board tilt from the IMU. Despite being just 4 pixels, the dot moves with such smooth, analog-like motion from the DSP filter pipeline that it visually resembles a liquid droplet rolling on glass.
 
-> **Note:** The module comment header mentions "2x2 Dot Spirit Level" — this refers to an earlier revision. The current active build renders a **3×3 droplet** with full fluid kinematics and automatic zero-g offset calibration.
+The dot position is expressed as a top-left corner coordinate $(r_0, c_0) \in [0, 6]$:
+- **At rest (flat on table):** Locked at center, Rows 3–4, Cols 3–4
+- **Full forward tilt (~20°–25°):** Moves to Row 0–1 (top edge)
+- **Full backward tilt (~20°–25°):** Moves to Row 6–7 (bottom edge)
+- **Full left/right tilt (~20°–25°):** Moves to Col 0–1 or Col 6–7 (side edges)
 
 ### Signal Processing Pipeline
 
@@ -112,56 +116,52 @@ The [`src/led_matrix_controller.v`](src/led_matrix_controller.v) module implemen
                           │
                           ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Stage 1: 128-Sample Q8.8 Fixed-Point EMA Filter    │  Strips sensor noise & quantization
-  │  y₁[n] = y₁[n-1] + ((x[n] - y₁[n-1]) >> 7)        │
+  │  Stage 1: 128-Sample Q8.8 Fixed-Point EMA Filter    │  Strips sensor noise & quantization steps
+  │  y₁[n] = y₁[n-1] + ((x[n] - y₁[n-1]) >> 7)        │  α = 1/128 → ~128 ms time constant
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Stage 2: 32-Sample Q8.8 Fixed-Point EMA Filter     │  2nd-order smooth analog roll-off
-  │  y₂[n] = y₂[n-1] + ((y₁[n] - y₂[n-1]) >> 5)       │
+  │  Stage 2: 32-Sample Q8.8 Fixed-Point EMA Filter     │  2nd-order analog-smooth roll-off
+  │  y₂[n] = y₂[n-1] + ((y₁[n] - y₂[n-1]) >> 5)       │  α = 1/32 → silky deceleration curve
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Auto Zero-g Offset Calibration (1.2s startup loop) │  Cancels sensor manufacturing bias
-  │  64 samples accumulated → bias_x, bias_y locked     │
+  │  Schmitt Trigger Amplitude Hysteresis               │  Multi-level state machine with
+  │  Deadzone ±7 LSB → 3 steps → Edge ±19 LSB          │  3 LSB hysteresis gap per level
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
-  │  Sub-Pixel Q8.8 Fluid Kinematics Engine (50 Hz)     │  Gravity acceleration + viscous drag
-  │  vel += gravity_force; vel *= 0.84375 (damping)      │
-  │  pos += vel >> 3 (sub-pixel integration)            │
-  └─────────────────────┬───────────────────────────────┘
-                        ▼
-  ┌─────────────────────────────────────────────────────┐
-  │  Shape Renderer: 3×3 Blob + Fluid Tails + Splashes  │  Dynamic deformation rendering
+  │  16 ms Temporal Debounce Filter                     │  Target must be stable for 16
+  │  (2 full matrix scan frames of verification)        │  consecutive ms before updating
   └─────────────────────┬───────────────────────────────┘
                         ▼
   ┌─────────────────────────────────────────────────────┐
   │  1 kHz Column Multiplexer + Registered Output Drive │  Glitch-free, flicker-free display
+  │  Active HIGH Anodes (cols) / Active LOW Cathodes    │  125 Hz full frame refresh rate
   └─────────────────────────────────────────────────────┘
 ```
 
-### Fluid Behavior
+### Position State Machine (Schmitt Trigger Hysteresis)
 
-| Behavior | Description |
+The Schmitt trigger prevents the dot from flickering at pixel boundaries. Each axis uses independent multi-level hysteresis:
+
+| State | Threshold to Enter | Threshold to Leave | Display Rows/Cols |
+| :--- | :---: | :---: | :--- |
+| **Center** | — | ±7 LSB | 3, 4 |
+| **Step 1** (near) | ±7 LSB | ±4 LSB | 2, 3 or 4, 5 |
+| **Step 2** (mid) | ±13 LSB | ±10 LSB | 1, 2 or 5, 6 |
+| **Edge** (border) | ±19 LSB | ±16 LSB | 0, 1 or 6, 7 |
+
+### Dot Behavior Summary
+
+| Condition | Behavior |
 | :--- | :--- |
-| **Resting** | Droplet sits dead-center (Row 2–4, Col 2–4) with zero jitter within ±6 LSB deadzone |
-| **Gentle Tilt** | Droplet accelerates slowly and viscously rolls across the grid |
-| **Steep Tilt** | Droplet rushes rapidly across the display with a trailing fluid stream tail |
-| **Wall Impact** | On hitting any border, the droplet flattens into a 5–7 pixel wide splash film; surface tension pulls it back into a 3×3 blob over ~140 ms |
-| **Diagonal Tilt** | Droplet flows diagonally toward corners with correct 2D momentum composition |
-
-### Startup Calibration Indicator
-
-On power-on or reset, the matrix displays a **blinking center target** for 1.2 seconds while the hardware auto-calibration loop samples the resting sensor bias:
-
-```
-  Phase 1 (0–200 ms):   Sensor settling (display blinks 2×2 center)
-  Phase 2 (200–1224 ms): 64 samples accumulated (display blinks outer target ring)
-  Phase 3 (>1224 ms):   bias_x & bias_y locked → Fluid simulation begins
-```
-
-> **Keep the board flat on a surface during the first 1.2 seconds after pressing RESET.**
+| **Board flat on table** | Dot locked dead-center, zero jitter (±7 LSB deadzone) |
+| **Gentle tilt** | Dot slides smoothly to Step 1 with slow analog deceleration |
+| **Medium tilt** | Dot progresses to Step 2 with damped overshoot feel |
+| **Full tilt (~20°–25°)** | Dot reaches the physical outer border of the 8×8 matrix |
+| **Diagonal tilt** | Dot moves diagonally to a corner with correct 2D tilt mapping |
+| **Rapid tilt change** | 16 ms debounce prevents flicker at step boundaries |
 
 ---
 
