@@ -9,9 +9,8 @@
 [![ISA](https://img.shields.io/badge/ISA-28_Instructions-green)](#)
 [![Tests](https://img.shields.io/badge/Tests-All_Passing-brightgreen)](#-verification)
 
----
 
-[Demo](docs/demo.gif)
+![Demo](docs/demo.gif)
 
 
 ## Overview
