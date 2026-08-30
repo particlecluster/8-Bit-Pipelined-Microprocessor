@@ -36,7 +36,7 @@ This project implements a **custom 8-bit RISC microprocessor** with a 5-stage pi
 ## Architecture
 
 <p align="center">
-  <img src="docs/Architecture_Diagram.png" alt="CPU Architecture" width="100%">
+  <img src="docs/arch.svg" alt="CPU Architecture" width="100%">
 </p>
 
 ### Hardware/Software Co-Design
