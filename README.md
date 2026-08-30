@@ -11,10 +11,8 @@
 
 ---
 
-<!--
-TODO: Record a short GIF/video of the LED matrix fluid demo and add it here:
-![Demo](docs/demo.gif)
--->
+[Demo](docs/demo.gif)
+
 
 ## Overview
 
