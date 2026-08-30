@@ -189,35 +189,64 @@ iverilog -o sim_test design.v src/i2c_peripheral.v src/led_matrix_controller.v s
 ## Repository Structure
 
 ```
-├── design.v                    # Top-level SoC (CPU + MMIO + peripherals)
-├── arty_a7.xdc                 # FPGA pin constraints
-├── program.hex.txt             # CPU firmware (hand-assembled machine code)
-├── src/
-│   ├── cpu_core.v              # 5-stage pipelined CPU
-│   ├── alu.v                   # ALU (28 ops, MUL, MAC, shifts, rotates)
-│   ├── branch_pred.v           # 32-entry dynamic BTB + BHT
-│   ├── branch_resolution_unit.v
-│   ├── fwd_unit.v              # EX→EX & MEM→EX forwarding
-│   ├── exception_unit.v        # CP0 coprocessor
-│   ├── control_unit.v          # Instruction decode & pipeline control
-│   ├── reg_file.v              # 8×8-bit register file
-│   ├── data_memory.v           # RAM + MMIO peripheral decoder
-│   ├── instr_memory.v          # Instruction ROM
-│   ├── i2c_peripheral.v        # Hardware I²C master (100 kHz)
-│   ├── led_matrix_controller.v # Fluid physics + DSP + LED driver
-│   ├── uart_transmitter.v      # UART TX serializer
-│   ├── uart_receiver.v         # UART RX deserializer
-│   ├── uart_peripheral.v       # UART MMIO controller
-│   ├── pwm_generator.v         # 8-bit hardware PWM
-│   └── ...
-├── sim/
-│   ├── comprehensive_test/     # Self-checking verification suites
-│   ├── bonus1/                 # Recursive factorial benchmark
-│   └── bonus2/                 # Exception handling tests
-└── docs/
-    ├── ISA_specification.md    # Full instruction encoding manual
-    ├── Architecture_Diagram.png
-    └── arch.svg
+├── design.v                        # Top-level SoC (CPU + MMIO + peripherals)
+├── arty_a7.xdc                     # FPGA pin constraints
+├── program.hex.txt                 # CPU firmware (hand-assembled machine code)
+│
+├── src/                            # Synthesizable Verilog modules
+│   ├── cpu_core.v                  # 5-stage pipelined CPU core
+│   ├── alu.v                       # ALU (28 ops, MUL, MAC, shifts, rotates)
+│   ├── branch_pred.v               # 32-entry dynamic BTB + BHT
+│   ├── branch_resolution_unit.v    # Branch outcome & mispredict recovery
+│   ├── fwd_unit.v                  # EX→EX & MEM→EX data forwarding
+│   ├── exception_unit.v            # CP0 coprocessor
+│   ├── control_unit.v              # Instruction decode & pipeline control
+│   ├── reg_file.v                  # 8×8-bit dual-read register file
+│   ├── data_memory.v               # RAM + MMIO peripheral decoder
+│   ├── instr_memory.v              # Instruction ROM
+│   ├── i2c_peripheral.v            # Hardware I²C master (100 kHz)
+│   ├── led_matrix_controller.v     # Fluid physics + DSP + LED driver
+│   ├── uart_transmitter.v          # UART TX serializer
+│   ├── uart_receiver.v             # UART RX deserializer
+│   ├── uart_peripheral.v           # UART MMIO controller
+│   ├── pwm_generator.v             # 8-bit hardware PWM
+│   ├── oled_controller.v           # SPI/I2C OLED display controller
+│   ├── int_control.v               # Hardware interrupt controller
+│   ├── reset_synchronizer.v        # Power-on reset synchronizer
+│   ├── extender.v                  # Sign/zero immediate extender
+│   ├── pc.v                        # Program counter register
+│   └── defines.v                   # ISA opcode & control definitions
+│
+├── sim/                            # Verification & simulation
+│   ├── comprehensive_test/         # Self-checking verification suites
+│   │   ├── tb_master_suite.v       #   Integrated system-level test
+│   │   ├── tb_isa_instructions.v   #   All 28 ISA instructions
+│   │   ├── tb_hazards_forwarding.v #   Data hazards & forwarding
+│   │   ├── tb_branch_prediction.v  #   Branch prediction & flush
+│   │   ├── tb_exceptions_interrupts.v # CP0 exceptions & interrupts
+│   │   ├── tb_peripherals_uart.v   #   GPIO, ADC, PWM, UART TX
+│   │   └── tb_uart_full_loopback.v #   UART TX→RX loopback
+│   ├── tb_cpu_i2c.v                # CPU + I²C + MPU-6050 co-simulation
+│   ├── tb_i2c.v                    # Standalone I²C engine test
+│   ├── clk_wiz_0_stub.v            # Clock wizard simulation stub
+│   ├── bonus1/                     # Recursive factorial benchmark
+│   ├── bonus2/                     # Exception handling verification
+│   ├── bonus2_individual/          # Isolated unit exception tests
+│   ├── end_eval/                   # Core evaluation benchmark
+│   ├── fact/                       # Factorial test
+│   └── uart/                       # UART TX verification
+│
+├── docs/                           # Documentation
+│   ├── ISA_specification.md        # Full instruction encoding manual
+│   ├── Architecture_Diagram.png    # CPU architecture block diagram
+│   ├── arch.svg                    # Architecture diagram (SVG)
+│   └── microarchitecture.svg       # Detailed microarchitecture diagram
+│
+├── presentation/                   # Project presentation materials
+│   └── Team_VOLTERE_8bit_Microprocessor_IITISoC_2026.pptx
+│
+└── tools/
+    └── web_assembler.html          # Browser-based assembler for the custom ISA
 ```
 
 ---
