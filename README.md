@@ -207,7 +207,6 @@ iverilog -o sim_test design.v src/i2c_peripheral.v src/led_matrix_controller.v s
 │   ├── uart_receiver.v             # UART RX deserializer
 │   ├── uart_peripheral.v           # UART MMIO controller
 │   ├── pwm_generator.v             # 8-bit hardware PWM
-│   ├── oled_controller.v           # SPI/I2C OLED display controller
 │   ├── int_control.v               # Hardware interrupt controller
 │   ├── reset_synchronizer.v        # Power-on reset synchronizer
 │   ├── extender.v                  # Sign/zero immediate extender
@@ -234,10 +233,10 @@ iverilog -o sim_test design.v src/i2c_peripheral.v src/led_matrix_controller.v s
 │   └── uart/                       # UART TX verification
 │
 ├── docs/                           # Documentation
-│   ├── ISA_specification.md        # Full instruction encoding manual
+|   ├── ISA_specification.md        # Full instruction encoding manual
 │   ├── Architecture_Diagram.png    # CPU architecture block diagram
-│   ├── arch.svg                    # Architecture diagram (SVG)
-│   └── microarchitecture.svg       # Detailed microarchitecture diagram
+│   └── arch.svg                    # Architecture diagram (SVG)
+│
 ```
 
 ---
