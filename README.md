@@ -241,12 +241,6 @@ iverilog -o sim_test design.v src/i2c_peripheral.v src/led_matrix_controller.v s
 │   ├── Architecture_Diagram.png    # CPU architecture block diagram
 │   ├── arch.svg                    # Architecture diagram (SVG)
 │   └── microarchitecture.svg       # Detailed microarchitecture diagram
-│
-├── presentation/                   # Project presentation materials
-│   └── Team_VOLTERE_8bit_Microprocessor_IITISoC_2026.pptx
-│
-└── tools/
-    └── web_assembler.html          # Browser-based assembler for the custom ISA
 ```
 
 ---
