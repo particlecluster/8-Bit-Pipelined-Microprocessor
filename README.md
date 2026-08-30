@@ -2,7 +2,7 @@
 
 > A fully synthesizable System-on-Chip built in Verilog — custom pipelined CPU, I²C sensor interface, hardware DSP, and real-time fluid physics on an 8×8 LED matrix.
 
-**Team Voltere** · IIT Indore · [IITISoC 2026](https://github.com/IITISoC)
+**Team Voltere** · IIT Indore · [IITISoC 2026]
 
 [![Verilog](https://img.shields.io/badge/HDL-Verilog-blue)](#)
 [![FPGA](https://img.shields.io/badge/FPGA-Artix--7-orange)](#)
